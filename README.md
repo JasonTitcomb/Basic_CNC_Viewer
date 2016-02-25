@@ -1,6 +1,6 @@
 # Basic_CNC_Viewer
 Master Branch
-![Sample](/Sample.png)
+![Sample](/Sample.png?raw=true)
 
 Basic_CNC_Viewer is a simple graphical back plotter for cnc files.
 It does not use accelerated graphics like OpenGl. It uses Windows GDI+ drawing.
