@@ -1,0 +1,516 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="14.0">
+  <PropertyGroup>
+    <ProjectType>Local</ProjectType>
+    <MyType>WindowsForms</MyType>
+    <ProductVersion>9.0.30729</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{6E549FD7-0021-43B3-91B9-7711CEC55101}</ProjectGuid>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <AssemblyName>CNCView</AssemblyName>
+    <OutputType>WinExe</OutputType>
+    <StartupObject>MacGen.My.MyApplication</StartupObject>
+    <AssemblyMajorVersion>2</AssemblyMajorVersion>
+    <AssemblyMinorVersion>4</AssemblyMinorVersion>
+    <AssemblyRevisionNumber>10</AssemblyRevisionNumber>
+    <GenerateRevisionNumber>True</GenerateRevisionNumber>
+    <AssemblyCompanyName>MacGen Programming</AssemblyCompanyName>
+    <StartWithIE>False</StartWithIE>
+    <ApplicationIcon>CNCView.ico</ApplicationIcon>
+    <RootNamespace>MacGen</RootNamespace>
+    <FileUpgradeFlags>
+    </FileUpgradeFlags>
+    <OptionCompare>Text</OptionCompare>
+    <OptionStrict>On</OptionStrict>
+    <OldToolsVersion>3.5</OldToolsVersion>
+    <UpgradeBackupLocation>
+    </UpgradeBackupLocation>
+    <IsWebBootstrapper>false</IsWebBootstrapper>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <SignManifests>false</SignManifests>
+    <SignAssembly>false</SignAssembly>
+    <GenerateManifests>false</GenerateManifests>
+    <TargetZone>LocalIntranet</TargetZone>
+    <ManifestKeyFile>
+    </ManifestKeyFile>
+    <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
+    <ApplicationManifest>My Project\app.manifest</ApplicationManifest>
+    <TargetFrameworkProfile />
+    <SccProjectName>SAK</SccProjectName>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccProvider>SAK</SccProvider>
+    <PublishUrl>publish\</PublishUrl>
+    <Install>true</Install>
+    <InstallFrom>Web</InstallFrom>
+    <UpdateEnabled>true</UpdateEnabled>
+    <UpdateMode>Foreground</UpdateMode>
+    <UpdateInterval>7</UpdateInterval>
+    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
+    <UpdatePeriodically>true</UpdatePeriodically>
+    <UpdateRequired>false</UpdateRequired>
+    <MapFileExtensions>true</MapFileExtensions>
+    <ProductName>Basic CNC Viewer</ProductName>
+    <PublisherName>MacGen Programming</PublisherName>
+    <CreateWebPageOnPublish>true</CreateWebPageOnPublish>
+    <WebPage>publish.htm</WebPage>
+    <OpenBrowserOnPublish>false</OpenBrowserOnPublish>
+    <ApplicationRevision>32</ApplicationRevision>
+    <ApplicationVersion>1.0.0.32</ApplicationVersion>
+    <UseApplicationTrust>false</UseApplicationTrust>
+    <PublishWizardCompleted>true</PublishWizardCompleted>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <OutputPath>bin\</OutputPath>
+    <DocumentationFile>
+    </DocumentationFile>
+    <DebugSymbols>True</DebugSymbols>
+    <DefineDebug>True</DefineDebug>
+    <DefineTrace>True</DefineTrace>
+    <DefineConstants>Win32=True</DefineConstants>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <NoWarn>42353,42354,42355</NoWarn>
+    <DebugType>full</DebugType>
+    <UseVSHostingProcess>true</UseVSHostingProcess>
+    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <OutputPath>bin\Release\</OutputPath>
+    <DocumentationFile>
+    </DocumentationFile>
+    <DebugSymbols>true</DebugSymbols>
+    <DefineDebug>False</DefineDebug>
+    <DefineTrace>True</DefineTrace>
+    <DefineConstants>Win32=True</DefineConstants>
+    <PlatformTarget>x86</PlatformTarget>
+    <NoWarn>42353,42354,42355</NoWarn>
+    <DebugType>pdbonly</DebugType>
+    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DefineDebug>true</DefineDebug>
+    <DefineTrace>true</DefineTrace>
+    <OutputPath>bin\x86\Debug\</OutputPath>
+    <DefineConstants>Win32=True</DefineConstants>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+    <NoWarn>42353,42354,42355</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DefineTrace>true</DefineTrace>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>Win32=True</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+    <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
+    <NoWarn>42353,42354,42355</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System">
+      <Name>System</Name>
+    </Reference>
+    <Reference Include="System.Deployment" />
+    <Reference Include="System.Drawing">
+      <Name>System.Drawing</Name>
+    </Reference>
+    <Reference Include="System.Web.Services" />
+    <Reference Include="System.Windows.Forms">
+      <Name>System.Windows.Forms</Name>
+    </Reference>
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Import Include="MacGen" />
+    <Import Include="MacGen.My" />
+    <Import Include="Microsoft.VisualBasic" />
+    <Import Include="System" />
+    <Import Include="System.Collections" />
+    <Import Include="System.Diagnostics" />
+    <Import Include="System.Drawing" />
+    <Import Include="System.Windows.Forms" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ApplicationEvents.vb" />
+    <Compile Include="AssemblyInfo.vb" />
+    <Compile Include="BasicNCViewer\clsCadRect.vb" />
+    <Compile Include="BasicNCViewer\clsColorBar.vb" />
+    <Compile Include="BasicNCViewer\clsDisplayList.vb" />
+    <Compile Include="BasicNCViewer\clsMotionRecord.vb" />
+    <Compile Include="BasicNCViewer\clsToolLayer.vb" />
+    <Compile Include="BasicNCViewer\DisplayException.vb" />
+    <Compile Include="BasicNCViewer\frmGraphicsDetails.Designer.vb">
+      <DependentUpon>frmGraphicsDetails.vb</DependentUpon>
+    </Compile>
+    <Compile Include="BasicNCViewer\frmGraphicsDetails.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="BasicNCViewer\frmQuickPick.Designer.vb">
+      <DependentUpon>frmQuickPick.vb</DependentUpon>
+    </Compile>
+    <Compile Include="BasicNCViewer\frmQuickPick.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="BasicNCViewer\MG_BasicViewer.Designer.vb">
+      <DependentUpon>MG_BasicViewer.vb</DependentUpon>
+    </Compile>
+    <Compile Include="BasicNCViewer\MG_BasicViewer.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="BasicNCViewer\MG_Graph.vb">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="ColorCombo.designer.vb">
+      <DependentUpon>ColorCombo.vb</DependentUpon>
+    </Compile>
+    <Compile Include="ColorCombo.vb">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Globals.vb" />
+    <Compile Include="MG_ToolStripColorSplitButton.vb">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="RichTextBox\clsColorScheme.vb" />
+    <Compile Include="RichTextBox\clsColorSettings.vb" />
+    <Compile Include="clsLogger.vb" />
+    <Compile Include="RichTextBox\clsOneSetting.vb" />
+    <Compile Include="clsToolStripSlider.designer.vb">
+      <DependentUpon>clsToolStripSlider.vb</DependentUpon>
+    </Compile>
+    <Compile Include="clsToolStripSlider.vb">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="frmBasicViewer.Designer.vb">
+      <DependentUpon>frmBasicViewer.vb</DependentUpon>
+    </Compile>
+    <Compile Include="frmBasicViewer.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="frmToolLayers.Designer.vb">
+      <DependentUpon>frmToolLayers.vb</DependentUpon>
+    </Compile>
+    <Compile Include="frmToolLayers.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="frmNewSetup.Designer.vb">
+      <SubType>Code</SubType>
+      <DependentUpon>frmNewSetup.vb</DependentUpon>
+    </Compile>
+    <Compile Include="frmNewSetup.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="frmViewerSetup.Designer.vb">
+      <SubType>Code</SubType>
+      <DependentUpon>frmViewerSetup.vb</DependentUpon>
+    </Compile>
+    <Compile Include="frmViewerSetup.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="frmZ_Filter.Designer.vb">
+      <DependentUpon>frmZ_Filter.vb</DependentUpon>
+    </Compile>
+    <Compile Include="frmZ_Filter.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="My Project\Application.Designer.vb">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Application.myapp</DependentUpon>
+    </Compile>
+    <Compile Include="My Project\Resources.Designer.vb">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="My Project\Settings.Designer.vb">
+      <AutoGen>True</AutoGen>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+    <Compile Include="NcParser\clsBlockSkip.vb" />
+    <Compile Include="NcParser\clsMachine.vb" />
+    <Compile Include="NcParser\clsMotion.vb" />
+    <Compile Include="NcParser\clsParseError.vb" />
+    <Compile Include="NcParser\clsParser.vb" />
+    <Compile Include="NcParser\clsParserException.vb" />
+    <Compile Include="NcParser\clsProg.vb" />
+    <Compile Include="NcParser\clsSettings.vb" />
+    <Compile Include="NC_Player.Designer.vb">
+      <DependentUpon>NC_Player.vb</DependentUpon>
+    </Compile>
+    <Compile Include="NC_Player.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="RichTextBox\MG_RichTextBox.Designer.vb">
+      <DependentUpon>MG_RichTextBox.vb</DependentUpon>
+    </Compile>
+    <Compile Include="RichTextBox\MG_RichTextBox.vb">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="ToolStripImageLoader.vb" />
+    <EmbeddedResource Include="RichTextBox\MG_RichTextBox.resx">
+      <DependentUpon>MG_RichTextBox.vb</DependentUpon>
+    </EmbeddedResource>
+    <None Include="app.config" />
+    <None Include="Resources\prinths1.png" />
+    <None Include="Resources\select.cur" />
+    <None Include="Resources\selectetc.cur" />
+    <None Include="Resources\viewzoom.bmp" />
+    <None Include="Resources\ViewTop.bmp" />
+    <None Include="Resources\viewrotate.bmp" />
+    <None Include="Resources\ViewRight.bmp" />
+    <None Include="Resources\viewpan.bmp" />
+    <None Include="Resources\ViewIso.bmp" />
+    <None Include="Resources\ViewFront.bmp" />
+    <None Include="Resources\ViewFit.bmp" />
+    <None Include="Resources\ViewFence.bmp" />
+    <None Include="Resources\prinths.png" />
+    <None Include="Resources\Select.png" />
+    <None Include="Resources\32\motion_color_32.png" />
+    <EmbeddedResource Include="BasicNCViewer\frmGraphicsDetails.resx">
+      <DependentUpon>frmGraphicsDetails.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="BasicNCViewer\frmQuickPick.resx">
+      <DependentUpon>frmQuickPick.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="BasicNCViewer\MG_BasicViewer.resx">
+      <DependentUpon>MG_BasicViewer.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="NC_Player.resx">
+      <DependentUpon>NC_Player.vb</DependentUpon>
+    </EmbeddedResource>
+    <None Include="My Project\Settings.settings">
+      <CustomToolNamespace>My</CustomToolNamespace>
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.vb</LastGenOutput>
+    </None>
+    <None Include="Resources\ToolLayers.png" />
+    <None Include="Resources\16\addspaces_16.png" />
+    <None Include="Resources\16\backcolor_16.png" />
+    <None Include="Resources\16\colorize_16.png" />
+    <None Include="Resources\16\copy_16.png" />
+    <None Include="Resources\16\delete_16.png" />
+    <None Include="Resources\16\display_16.png" />
+    <None Include="Resources\16\mail_16.png" />
+    <None Include="Resources\16\newfile_16.png" />
+    <None Include="Resources\16\newscheme_16.png" />
+    <None Include="Resources\16\onescreen_16.png" />
+    <None Include="Resources\16\open_16.png" />
+    <None Include="Resources\16\pan_16.png" />
+    <None Include="Resources\16\pauseplayer_16.png" />
+    <None Include="Resources\16\play_16.png" />
+    <None Include="Resources\16\plot_16.png" />
+    <None Include="Resources\16\print_16.png" />
+    <None Include="Resources\16\refresh_16.png" />
+    <None Include="Resources\16\removespaces_16.png" />
+    <None Include="Resources\16\rename_16.png" />
+    <None Include="Resources\16\savefile_16.png" />
+    <None Include="Resources\16\screens_16.png" />
+    <None Include="Resources\16\elementdetails_16.png" />
+    <None Include="Resources\16\fourscreens_16.png" />
+    <None Include="Resources\16\help_16.png" />
+    <None Include="Resources\16\Isometric_16.png" />
+    <None Include="Resources\16\select_16.png" />
+    <None Include="Resources\16\selectcolor_16.png" />
+    <None Include="Resources\16\settings_16.png" />
+    <None Include="Resources\16\showaxisindicator_16.png" />
+    <None Include="Resources\16\showaxislimits_16.png" />
+    <None Include="Resources\16\showaxislines_16.png" />
+    <None Include="Resources\16\showrapidlines_16.png" />
+    <None Include="Resources\16\showrapidpoints_16.png" />
+    <None Include="Resources\16\startplayer_16.png" />
+    <None Include="Resources\16\stopplayer_16.png" />
+    <None Include="Resources\16\toggleedit_16.png" />
+    <None Include="Resources\16\toolsfilter_16.png" />
+    <None Include="Resources\16\touchmode_16.png" />
+    <None Include="Resources\16\twoscreens_16.png" />
+    <None Include="Resources\16\viewfence_16.png" />
+    <None Include="Resources\16\viewFit_16.png" />
+    <None Include="Resources\16\viewfront_16.png" />
+    <None Include="Resources\16\savefileas_16.png" />
+    <None Include="Resources\16\motion_color_16.png" />
+    <Content Include="Resources\16\ViewIso.bmp">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="Resources\16\viewiso_16.png" />
+    <None Include="Resources\16\viewoptions_16.png" />
+    <None Include="Resources\16\viewpan_16.png" />
+    <None Include="Resources\16\viewright_16.png" />
+    <None Include="Resources\16\viewrotate_16.png" />
+    <None Include="Resources\16\viewtop_16.png" />
+    <None Include="Resources\16\viewzoom_16.png" />
+    <None Include="Resources\16\website_16.png" />
+    <None Include="Resources\16\zfilter_16.png" />
+    <None Include="Resources\32\addspaces_32.png" />
+    <None Include="Resources\32\backcolor_32.png" />
+    <None Include="Resources\32\colorize_32.png" />
+    <None Include="Resources\32\copy_32.png" />
+    <None Include="Resources\32\delete_32.png" />
+    <None Include="Resources\32\display_32.png" />
+    <None Include="Resources\32\elementdetails_32.png" />
+    <None Include="Resources\32\newscheme_32.png" />
+    <None Include="Resources\32\onescreen_32.png" />
+    <None Include="Resources\32\open_32.png" />
+    <None Include="Resources\32\Options_32.png" />
+    <None Include="Resources\32\pauseplayer_32.png" />
+    <None Include="Resources\32\play_32.png" />
+    <None Include="Resources\32\plot_32.png" />
+    <None Include="Resources\32\print_32.png" />
+    <None Include="Resources\32\refresh_32.png" />
+    <None Include="Resources\32\removespacing_32.png" />
+    <None Include="Resources\32\rename_32.png" />
+    <None Include="Resources\32\savefile_32.png" />
+    <None Include="Resources\32\screens_32.png" />
+    <None Include="Resources\32\email_32.png" />
+    <None Include="Resources\32\fourscreens_32.png" />
+    <None Include="Resources\32\help_32.png" />
+    <None Include="Resources\32\newfile_32.png" />
+    <None Include="Resources\32\select_32.png" />
+    <None Include="Resources\32\selectcolor_32.png" />
+    <None Include="Resources\32\settings_32.png" />
+    <None Include="Resources\32\showaxisindicator_32.png" />
+    <None Include="Resources\32\showaxislimits_32.png" />
+    <None Include="Resources\32\showaxislines_32.png" />
+    <None Include="Resources\32\showrapidlines_32.png" />
+    <None Include="Resources\32\showrapidpoints_32.png" />
+    <None Include="Resources\32\startplayer_32.png" />
+    <None Include="Resources\32\stopplayer_32.png" />
+    <None Include="Resources\32\toggleedit_32.png" />
+    <None Include="Resources\32\toolsfilter_32.png" />
+    <None Include="Resources\32\touchmode_32.png" />
+    <None Include="Resources\32\twoscreens_32.png" />
+    <None Include="Resources\32\viewfence_32.png" />
+    <None Include="Resources\32\viewfit_32.png" />
+    <None Include="Resources\32\viewfront_32.png" />
+    <None Include="Resources\32\viewiso_32.png" />
+    <None Include="Resources\32\viewoptions_32.png" />
+    <None Include="Resources\32\viewpan_32.png" />
+    <None Include="Resources\32\viewright_32.png" />
+    <None Include="Resources\32\viewrotate_32.png" />
+    <None Include="Resources\32\viewtop_32.png" />
+    <None Include="Resources\32\viewzoom_32.png" />
+    <None Include="Resources\32\website_32.png" />
+    <None Include="Resources\warning.png" />
+    <None Include="Resources\pause_16.png" />
+    <None Include="Resources\pause_32.png" />
+    <None Include="Resources\play_16.png" />
+    <None Include="Resources\play_32.png" />
+    <None Include="Resources\stop_16.png" />
+    <None Include="Resources\stop_32.png" />
+    <None Include="Resources\32\zfilter_32.png" />
+    <None Include="Resources\ColorPicker.bmp" />
+    <None Include="Resources\32\savefileas_32.png" />
+    <None Include="Resources\32\zoom_auto_32.png" />
+    <None Include="Resources\16\zoom_auto_16.png" />
+    <Content Include="Data\Schemes\Default.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Data\Schemes\White.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="frmToolLayers.resx">
+      <SubType>Designer</SubType>
+      <DependentUpon>frmToolLayers.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="frmNewSetup.resX">
+      <DependentUpon>frmNewSetup.vb</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="frmViewerSetup.resX">
+      <DependentUpon>frmViewerSetup.vb</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="My Project\Resources.resx">
+      <SubType>Designer</SubType>
+      <CustomToolNamespace>My.Resources</CustomToolNamespace>
+      <Generator>VbMyResourcesResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.vb</LastGenOutput>
+    </EmbeddedResource>
+    <Content Include="Data\Lathe.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Data\Mill.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <BaseApplicationManifest Include="My Project\app.manifest" />
+    <EmbeddedResource Include="CNCView.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="frmBasicViewer.cs.resx">
+      <DependentUpon>frmBasicViewer.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="frmBasicViewer.resX">
+      <DependentUpon>frmBasicViewer.vb</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="frmZ_Filter.resx">
+      <DependentUpon>frmZ_Filter.vb</DependentUpon>
+    </EmbeddedResource>
+    <Content Include="My Project\Application.myapp">
+      <Generator>MyApplicationCodeGenerator</Generator>
+      <LastGenOutput>Application.Designer.vb</LastGenOutput>
+    </Content>
+    <Content Include="Data\Samples\LATHE.cnc">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Data\Samples\MILL.CNC">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <BootstrapperPackage Include=".NETFramework,Version=v4.0">
+      <Visible>False</Visible>
+      <ProductName>Microsoft .NET Framework 4 %28x86 and x64%29</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework Client Profile</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.2.0">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 2.0 %28x86%29</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.0">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.0 %28x86%29</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Windows.Installer.4.5">
+      <Visible>False</Visible>
+      <ProductName>Windows Installer 4.5</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <Service Include="{B4F97281-0DBD-4835-9ED8-7DFB966E87FF}" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup />
+  <Import Project="$(MSBuildBinPath)\Microsoft.VisualBasic.targets" />
+  <PropertyGroup>
+    <PreBuildEvent>
+    </PreBuildEvent>
+  </PropertyGroup>
+</Project>

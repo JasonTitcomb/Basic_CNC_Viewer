@@ -1,0 +1,189 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<Scheme>
+  <BackColor>-1</BackColor>
+  <GutterBackColor>-1</GutterBackColor>
+  <GutterForeColor>-16777216</GutterForeColor>
+  <GutterFont>Consolas|8|0|3|1|False</GutterFont>
+  <TextRangeBox>-5065537</TextRangeBox>
+  <Indent>0</Indent>
+  <StdSettings>
+    <Word>
+      <Name>Default</Name>
+      <Match>*</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Default Text</Desc>
+    </Word>
+    <Word>
+      <Name>X</Name>
+      <Match>X</Match>
+      <Color>-16362856</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>X Positions</Desc>
+    </Word>
+    <Word>
+      <Name>Y</Name>
+      <Match>Y</Match>
+      <Color>-12690677</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Y Positions</Desc>
+    </Word>
+    <Word>
+      <Name>Z</Name>
+      <Match>Z</Match>
+      <Color>-8388608</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Z Positions</Desc>
+    </Word>
+    <Word>
+      <Name>Rapid</Name>
+      <Match>G00</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Rapid positioning</Desc>
+    </Word>
+    <Word>
+      <Name>Cutting</Name>
+      <Match>G01</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Cutting mode</Desc>
+    </Word>
+    <Word>
+      <Name>CW_Arc</Name>
+      <Match>G02</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Clockwise circle cutting</Desc>
+    </Word>
+    <Word>
+      <Name>CCW_Arc</Name>
+      <Match>G03</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Counter-clockwise circle cutting</Desc>
+    </Word>
+    <Word>
+      <Name>CompLeft</Name>
+      <Match>G41</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Cutter compensation, tool-left</Desc>
+    </Word>
+    <Word>
+      <Name>CompRight</Name>
+      <Match>G42</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Cutter compensation, tool-right</Desc>
+    </Word>
+    <Word>
+      <Name>CompOff</Name>
+      <Match>G40</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Cutter compensation cancel</Desc>
+    </Word>
+    <Word>
+      <Name>Incremental</Name>
+      <Match>G91</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Incremental positioning mode</Desc>
+    </Word>
+    <Word>
+      <Name>Absolute</Name>
+      <Match>G90</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Absolute positioning mode</Desc>
+    </Word>
+    <Word>
+      <Name>Comment</Name>
+      <Match>;()</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Comment</Desc>
+    </Word>
+    <Word>
+      <Name>Skip</Name>
+      <Match>/</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Block Skip</Desc>
+    </Word>
+    <Word>
+      <Name>Highlight</Name>
+      <Match />
+      <Color>-38476</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Highlight replacements and operations</Desc>
+    </Word>
+  </StdSettings>
+  <CustSettings>
+    <Word>
+      <Name>Custom_0</Name>
+      <Match>F[0-9]</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Feed rate</Desc>
+    </Word>
+    <Word>
+      <Name>Custom_1</Name>
+      <Match>S[0-9]</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Spindle speed</Desc>
+    </Word>
+    <Word>
+      <Name>Custom_2</Name>
+      <Match>Z-[0-9]</Match>
+      <Color>-16777216</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>Negative Z</Desc>
+    </Word>
+    <Word>
+      <Name>Custom_3</Name>
+      <Match>#[0-9]</Match>
+      <Color>-256</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>MacroVar</Desc>
+    </Word>
+    <Word>
+      <Name>Custom_4</Name>
+      <Match>\[</Match>
+      <Color>-8388864</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>OpenParen</Desc>
+    </Word>
+    <Word>
+      <Name>Custom_5</Name>
+      <Match>\]</Match>
+      <Color>-8388864</Color>
+      <Font>Consolas|12|0|3|1|False</Font>
+      <Height>0</Height>
+      <Desc>ClosedParen</Desc>
+    </Word>
+  </CustSettings>
+</Scheme>
