@@ -253,9 +253,18 @@
     <Compile Include="RichTextBox\MG_RichTextBox.vb">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="SimpleViewer.Designer.vb">
+      <DependentUpon>SimpleViewer.vb</DependentUpon>
+    </Compile>
+    <Compile Include="SimpleViewer.vb">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="ToolStripImageLoader.vb" />
     <EmbeddedResource Include="RichTextBox\MG_RichTextBox.resx">
       <DependentUpon>MG_RichTextBox.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="SimpleViewer.resx">
+      <DependentUpon>SimpleViewer.vb</DependentUpon>
     </EmbeddedResource>
     <None Include="app.config" />
     <None Include="Resources\prinths1.png" />

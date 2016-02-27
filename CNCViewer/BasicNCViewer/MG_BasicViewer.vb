@@ -99,7 +99,6 @@ Public Class MG_BasicViewer
     Public Shared Event OnElementDetailsClose()
     Public Shared Event OnElementDetailsOpened()
     Public Event OnViewOrientationChanged(ByVal pitch As Single, ByVal roll As Single, ByVal yaw As Single)
-    Public Shared Expired As Boolean = True
     'private members
     Private Const NUMBERFORMAT As String = "##0.0###"
     Private Shared mAll_Siblings As New List(Of MG_BasicViewer)
@@ -3337,7 +3336,7 @@ Public Class MG_BasicViewer
     End Sub
 
     'Sets the selection based on a range
-    Public Sub SetSelectionHits(ByVal rangeLnStart As Integer, ByVal rangeLnEnd As Integer, ByVal pIndex As Integer)
+    Public Sub SetSelectionHits(ByVal rangeLnStart As Integer, ByVal rangeLnEnd As Integer, ByVal progIndex As Integer)
         Dim maxHits As Integer = 0
         Dim hitIndex As Integer = 0
         mSelectionHits.Clear()
@@ -3348,7 +3347,7 @@ Public Class MG_BasicViewer
                     If maxHits >= mMaxSelectionHits Then Exit For
                     If MotionRecords(l.MotionIndex).Linenumber >= rangeLnStart _
                     AndAlso MotionRecords(l.MotionIndex).Linenumber <= rangeLnEnd _
-                    AndAlso MotionRecords(l.MotionIndex).ProgIndex = pIndex Then
+                    AndAlso MotionRecords(l.MotionIndex).ProgIndex = progIndex Then
                         mSelectionHits.Add(MotionRecords(l.MotionIndex))
                         mSelectionHitIndices.Add(hitIndex)
                         maxHits += 1

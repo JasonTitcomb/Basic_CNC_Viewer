@@ -64,7 +64,6 @@ Friend Class frmBasicViewer
             End If
 
             mParser.Init(mSetup.Machine)
-            MG_BasicViewer.Expired = False
             MG_ViewerCurrent.InitMyNeighbors()
             MG_ViewerCurrent.InitSiblingMotionBlocks(mMotionBlocks)
             Me.MG_ViewerCurrent.SelectionColor = My.Settings.ViewerSelectionColor
