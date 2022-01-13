@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <Machine>
   <Name>Lathe</Name>
-  <Description>Lathe setup file</Description>
+  <Description>Lathe%20setup%20file</Description>
   <AbsArcCenter>False</AbsArcCenter>
   <LatheMinus>False</LatheMinus>
   <HelixPitch>False</HelixPitch>
@@ -16,7 +16,7 @@
   <SubReturn>M99</SubReturn>
   <RotPrecision>4</RotPrecision>
   <RotaryType>BMC</RotaryType>
-  <Searchstring>Lathe</Searchstring>
+  <Searchstring>LATHE</Searchstring>
   <ViewAngles_0>0</ViewAngles_0>
   <ViewAngles_1>90</ViewAngles_1>
   <ViewAngles_2>90</ViewAngles_2>
@@ -37,7 +37,8 @@
   <Drills_6>G86</Drills_6>
   <Drills_7>G87</Drills_7>
   <Drills_8>G88</Drills_8>
-  <Drills_9 />
+  <Drills_9>
+  </Drills_9>
   <Linear>G01</Linear>
   <Rapid>G00</Rapid>
   <ReturnLevel_0>G98</ReturnLevel_0>
@@ -48,4 +49,71 @@
   <YZplane>G19</YZplane>
   <Subcall>M98</Subcall>
   <SubRepeats>L</SubRepeats>
+  <MachineUnits>ENGLISH</MachineUnits>
+  <UnitsEnglishAddress>G20</UnitsEnglishAddress>
+  <UnitsMetricAddress>G21</UnitsMetricAddress>
+  <Invert_0>1</Invert_0>
+  <Invert_1>1</Invert_1>
+  <Invert_2>1</Invert_2>
+  <Invert_3>1</Invert_3>
+  <AbsIJK>G90.1</AbsIJK>
+  <IncIJK>G91.1</IncIJK>
+  <ExternalCallParam>P</ExternalCallParam>
+  <InternalCall>M97</InternalCall>
+  <InternalCallParam>H</InternalCallParam>
+  <RapidRate>250</RapidRate>
+  <MaxRpmAddress>G50</MaxRpmAddress>
+  <MaxRpmValue>5000</MaxRpmValue>
+  <DogLegMotion>True</DogLegMotion>
+  <FeedPrecision>5</FeedPrecision>
+  <CompLeft>G41</CompLeft>
+  <CompRight>G42</CompRight>
+  <CompCancel>G40</CompCancel>
+  <FeedModeMin>G98</FeedModeMin>
+  <FeedModeRev>G99</FeedModeRev>
+  <SpeedModeRPM>G97</SpeedModeRPM>
+  <SpeedModeSFM>G96</SpeedModeSFM>
+  <UseUVW>False</UseUVW>
+  <InvertArcCenterValues>False</InvertArcCenterValues>
+  <ToolChange>M06</ToolChange>
+  <HomeCommand>G28</HomeCommand>
+  <HomeAddress0>U</HomeAddress0>
+  <HomeAddress1>V</HomeAddress1>
+  <HomeAddress2>W</HomeAddress2>
+  <HomeValues0>0</HomeValues0>
+  <HomeValues1>0</HomeValues1>
+  <HomeValues2>0</HomeValues2>
+  <LimitsMaxX>1000</LimitsMaxX>
+  <LimitsMinX>-1000</LimitsMinX>
+  <LimitsMaxY>1000</LimitsMaxY>
+  <LimitsMinY>-1000</LimitsMinY>
+  <LimitsMaxZ>1000</LimitsMaxZ>
+  <LimitsMinZ>-1000</LimitsMinZ>
+  <ViewShiftX>0</ViewShiftX>
+  <ViewShiftY>0</ViewShiftY>
+  <ViewShiftZ>0</ViewShiftZ>
+  <Parser>FANUC_Parser</Parser>
+  <Emitter>GcodeEmitter</Emitter>
+  <CornerTreatments>True</CornerTreatments>
+  <WorkOffsetCancel>G53</WorkOffsetCancel>
+  <WorkOffsetTemp>G92</WorkOffsetTemp>
+  <WorkOffsetG52>G52</WorkOffsetG52>
+  <WorkOffsets>G54,0,0,0,0</WorkOffsets>
+  <G68RotationOn>G68</G68RotationOn>
+  <G68RotationOff>G69</G68RotationOff>
+  <G68RotationX>X</G68RotationX>
+  <G68RotationY>Y</G68RotationY>
+  <G68RotationR>R</G68RotationR>
+  <G51ScalingOn>G51</G51ScalingOn>
+  <G51ScalingOff>G50</G51ScalingOff>
+  <G51ScalingX>X</G51ScalingX>
+  <G51ScalingY>Y</G51ScalingY>
+  <G51ScalingZ>Z</G51ScalingZ>
+  <G51ScalingFactor>P</G51ScalingFactor>
+  <AllowG10>True</AllowG10>
+  <MirrorOn>G51.1</MirrorOn>
+  <MirrorOff>G50.1</MirrorOff>
+  <MirrorX>X</MirrorX>
+  <MirrorY>Y</MirrorY>
+  <MirrorZ>Z</MirrorZ>
 </Machine>

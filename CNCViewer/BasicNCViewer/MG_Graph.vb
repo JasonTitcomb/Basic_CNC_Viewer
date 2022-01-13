@@ -18,7 +18,7 @@ Public Class MG_Graph
     Public Sub ClearAllBars()
         mColorBars.Clear()
     End Sub
-    Private Sub MG_Graph_Paint(ByVal sender As Object, ByVal e As System.Windows.Forms.PaintEventArgs) Handles Me.Paint
+    Private Sub MG_Graph_Paint(ByVal sender As Object, ByVal e As PaintEventArgs) Handles Me.Paint
         e.Graphics.DrawRectangle(mForecolorPen, mBorder)
         mBar.Y = mPadding
 
@@ -40,7 +40,7 @@ Public Class MG_Graph
         Next
     End Sub
 
-    Private Sub MG_Graph_Resize(ByVal sender As Object, ByVal e As System.EventArgs) Handles Me.Resize
+    Private Sub MG_Graph_Resize(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Resize
         mBorder = ClientRectangle
         mBorder.Inflate(-1, -1)
         mForecolorPen.Color = Me.ForeColor

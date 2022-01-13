@@ -1,21 +1,66 @@
 ''' <remarks>
 ''' Jason Titcomb
-''' MacGen Programming
 ''' www.CncEdit.com
 ''' https://github.com/JasonTitcomb/Basic_CNC_Viewer/blob/master/LICENSE.md
 ''' </remarks>
-Imports System.Collections.Generic
+
 Imports System.ComponentModel
 Imports System.Drawing.Drawing2D
 Imports System.Runtime.InteropServices
-Imports System.Security.Permissions
+Imports Abacus.SinglePrecision
+Imports System.Collections.Generic
+Imports System.Linq
+
+Public Enum MachineType
+    LATHEDIA = 0
+    LATHERAD = 1
+    MILL = 2
+End Enum
+
+Public Enum MachineUnits
+    ENGLISH
+    METRIC
+End Enum
+
+Public Enum ArcAxis
+    Z = 0
+    Y = 1
+    X = 2
+End Enum
+
+Public Enum Rot
+    A = 0
+    B = 1
+    C = 2
+End Enum
+
+Public Enum RotaryDirection
+    CW = 1
+    CCW = -1
+End Enum
+
+Public Enum FeedMode
+    UNIT_PER_MIN = 0
+    UNIT_PER_REV = 1
+End Enum
+
+Public Enum SpeedMode
+    RPM = 0
+    SURFACE_SPEED = 1
+End Enum
+
+Public Enum RotaryMotionType
+    BMC = 0
+    CAD = 1
+End Enum
 
 Public Class MG_BasicViewer
-    Implements IDisposable, IComponent
+    Implements IComponent
 #Region "ConstructorDestructor"
     Public Sub New()
         ' This call is required by the Windows Form Designer.
         InitializeComponent()
+        Me.Cursor = Me.mSelectCursor
         ' Add any initialization after the InitializeComponent() call.
         mAll_Siblings.Add(Me)
 
@@ -24,20 +69,35 @@ Public Class MG_BasicViewer
         SetStyle(ControlStyles.OptimizedDoubleBuffer, False)
         ' Retrieves the BufferedGraphicsContext for the current application domain.
         mContext = BufferedGraphicsManager.Current
+        isInitialized = False
+        'Try
+        '    If Dx3 Is Nothing Then
+        '        Dx3 = New _3DconnexionDriver._3DconnexionDevice(My.Application.Info.ProductName)
+        '        Dx3.InitDevice(Me.Handle)
+        '        If Dx3.IsAvailable Then
+        '            'mLog.LogAlert("3DconnexionDriver", Dx3.DeviceName)
+        '        End If
+
+        '    End If
+        'Catch ex As Exception
+        '    'mLog.LogAlert("3DconnexionDriver", ex.Message)
+        'End Try
+
+
     End Sub
 
-    Protected Overrides Sub Finalize()
-        ' Do not change this code.  Put cleanup code in Dispose(ByVal disposing As Boolean).
-        Dispose(False)
-        MyBase.Finalize()
-    End Sub
 
-    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+    Protected Overrides Sub Dispose(disposing As Boolean)
         Try
             If disposing Then
 
                 mAll_Siblings.Remove(Me)
-                DrawAllSelectionOverlays = DirectCast([Delegate].Remove(DrawAllSelectionOverlays, DrawAllSelectionOverlays), DrawAllSelectionOverlayDelegate)
+                DrawGraphicsOverlaysAllViews = DirectCast([Delegate].Remove(DrawGraphicsOverlaysAllViews, DrawGraphicsOverlaysAllViews), DrawAllSelectionOverlayDelegate)
+
+                If mMtxText IsNot Nothing Then
+                    mMtxText.Dispose()
+                    mMtxText = Nothing
+                End If
 
                 If mMtxDraw IsNot Nothing Then
                     mMtxDraw.Dispose()
@@ -65,11 +125,14 @@ Public Class MG_BasicViewer
             End If
         Finally
             MyBase.Dispose(disposing)
-            System.GC.SuppressFinalize(Me)
+            GC.SuppressFinalize(Me)
         End Try
     End Sub
 
 #End Region
+    'public members
+    Public ToolLayers As New Dictionary(Of Single, clsToolLayer)
+    Private Shared mAll_Siblings As New List(Of MG_BasicViewer)
     Public Enum ManipMode
         NONE
         FENCE
@@ -78,15 +141,16 @@ Public Class MG_BasicViewer
         ROTATE
         SELECTION
         FIT
+        SETROTATE
+        MEASURE
     End Enum
-
-    Public ToolLayers As New Dictionary(Of Single, clsToolLayer)
-    Public Event AfterViewManip(ByVal mode As ManipMode, ByVal viewRect As RectangleF)
-    Public Event OnStatus(ByVal msg As String, ByVal index As Integer, ByVal max As Integer)
-    Public Event OnSelection(ByVal hits As List(Of clsMotionRecord), ByVal i As Integer)
-    Public Event MouseLocation(ByVal x As Single, ByVal y As Single)
-    Public Event OnSetViewMode(ByVal mode As ManipMode)
-    Public Event OnSlowDrawingAlert(ByVal vewCtrl As MG_BasicViewer)
+    Public Event AfterViewManip(mode As ManipMode, viewRect As RectangleF)
+    Public Event OnStatus(msg As String, index As Integer, max As Integer)
+    Public Event OnSelection(hits As List(Of clsMotionRecord), i As Integer)
+    Public Event OnHighlight(hits As List(Of clsMotionRecord), i As Integer)
+    Public Event MouseLocation(x As Single, y As Single, z As Single)
+    Public Event OnSetViewMode(mode As ManipMode)
+    Public Event OnSlowDrawingAlert(vewCtrl As MG_BasicViewer)
     ' Touch event handlers
     Public Event Touchdown As EventHandler(Of WMTouchEventArgs)
     Public Event Touchup As EventHandler(Of WMTouchEventArgs)
@@ -98,52 +162,60 @@ Public Class MG_BasicViewer
 
     Public Shared Event OnElementDetailsClose()
     Public Shared Event OnElementDetailsOpened()
-    Public Event OnViewOrientationChanged(ByVal pitch As Single, ByVal roll As Single, ByVal yaw As Single)
-    'private members
+    Public Event OnViewOrientationChanged(pitch As Single, roll As Single, yaw As Single)
+    Public Shared Expired As Boolean = True
     Private Const NUMBERFORMAT As String = "##0.0###"
-    Private Shared mAll_Siblings As New List(Of MG_BasicViewer)
+    'private members
     Private Const ONE_RADIAN As Single = Math.PI * 2
+    Private Const QUARTER_RADIAN As Single = Math.PI / 2
     Private Const PI_S As Single = Math.PI
+    'Private Const RAPIDRATE As Single = 100.0
     Private Const FAST_QUALITY As Single = 0.25
     Private Const VARIABLE_QUALITY As Single = 1.0
-    Private Const FIXED_QUALITY As Single = 100.0
+    Private Const FIXED_FINE_QUALITY As Single = 100.0
+    Private Const ROTATE_BORDER As Single = 25
     Private mPixelF As Single
     Private mBlipSize As Single
-    Private mSinPitch As Single
-    Private mSinYaw As Single
-    Private mSinRoll As Single
-    Private mCosPitch As Single
-    Private mCosYaw As Single
-    Private mCosRoll As Single
-    Private mCosRot As Single
-    Private mSinRot As Single
+    Private mEndPointSize As Single
     Private mBackStep As Boolean
     Private mLongside As Single = 2.0
     Private mLastPos As PointF
     Private mCurMotionRec As clsMotionRecord
-    Private mGfxIndex As Integer
+    Private mMotRecIdx As Integer
     Private mCurMotionColor As Color = mRapidColor
 
     Private mExtentX(1) As Single
     Private mExtentY(1) As Single
+
     Private mExtentRectangle As RectangleF
 
-    Private mPoints As New List(Of PointF)
-    Private mSelectionHitIndices As New List(Of Integer)
-    Private mLastSelectionHitIndices As New List(Of Integer)
+    Private mPoints2D As New List(Of PointF)
+    Private mDisplayLists2DSelectionIndices As New List(Of Integer)
     Private mSelectionHits As New List(Of clsMotionRecord)
+    Private mDisplayLists2D As New List(Of clsDisplayList2D)
+    Private mLimitsDisplayLists As New List(Of clsDisplayList2D)
+    Private mGridDisplayLists As New List(Of clsDisplayList2D)
 
-    Private mDisplayLists As New List(Of clsDisplayList)
-    Private mLimitsDisplayLists As New List(Of clsDisplayList)
-    Private mWcsDisplayLists As New List(Of clsDisplayList)
+    Private mWcsDisplayLists As New List(Of clsDisplayList2D)
+
+    Private mUserDisplayLists As New List(Of clsDisplayList2D)
+    Private mUserMotionRecords As New List(Of clsUserRecord)
+
+    Private mToolDiaDisplayLists As New List(Of clsDisplayList2D)
+    Private mToolCompDisplayLists As New List(Of clsDisplayList2D)
     Private mMouseDownAndMoving As Boolean
     Private mMouseDownPt As Point
     Private mLastPt As Point
 
-    Private mMtxDraw As New Drawing2D.Matrix
-    Private mMtxWCS As New Drawing2D.Matrix
-    Private mMtxFeedback As New Drawing2D.Matrix
-    Private mMtxGeo As New Drawing2D.Matrix
+    Private mViewMatrix As Matrix44 = Matrix44.Identity
+    Private mRotaryMatrix As Matrix44 = Matrix44.Identity
+    Private mRotateAbout3D As Vector3
+    Private mSelKeypoint3D As New Vector3
+    Private mRotateAbout2DIndicator As PointF
+
+    Private mMtxDraw As New Matrix
+    Private mMtxText As New Matrix
+    Private mMtxFeedback As New Matrix
     Private mViewRect As New RectangleF
     Private mClientRect As New Rectangle
     Private mSelectionRect As New RectangleF(0, 0, 0, 0)
@@ -151,7 +223,6 @@ Public Class MG_BasicViewer
     Private mViewportCenter As New PointF
     Private mScaleToReal As Single = 1.0
     Private mMousePtF(2) As PointF
-
     Private mCurPen As New Pen(Color.White, 0)
     Private mWCSPen As New Pen(Color.Blue, 0)
     Private mRapidDashStyle As Single() = New Single() {0.1F, 0.1F}
@@ -159,48 +230,255 @@ Public Class MG_BasicViewer
 
     Private mContext As BufferedGraphicsContext
     Private mGfxBuff As BufferedGraphics
+    'Private mSelBuff As BufferedGraphics
     Private mGfx As Graphics
     Private WithEvents mFrmQuickPick As frmQuickPick
-    Private mCurmanipMode As MG_BasicViewer.ManipMode
+    Private mViewModeWhenMouseWasDown As ManipMode
     Private mInverseColor As Color
-
     'Define the delegate types
-    Delegate Sub DrawAllSelectionOverlayDelegate(ByVal Indices As List(Of Integer), ByVal selIndex As Integer)
-    Protected Friend DrawAllSelectionOverlays As DrawAllSelectionOverlayDelegate = AddressOf DrawSelectionOverlay
+    Delegate Sub DrawAllSelectionOverlayDelegate(Indices As List(Of Integer), selIndex As Integer)
+    Protected Friend DrawGraphicsOverlaysAllViews As DrawAllSelectionOverlayDelegate = AddressOf DrawGraphicsOverlay
+    Delegate Sub DrawAllDelegate()
     Private Shared mCancelSlowDisplayList As Boolean
     Private Shared mAllowSlowDisplayList As Boolean
     Private mStopWatch As Stopwatch
     Private mSelectCursor As Cursor
     Private mSelectEtcCursor As Cursor
-    Private SavingDXF As Boolean = False
+    Private mSetRotateCursor As Cursor
+    Private mMeasureCursor As Cursor
+    Private mMeasureKeypointCursor As Cursor
+    'Private mSavingDXF As Boolean = False
     Private mDxfOutFile As String
     Private xOld, yOld, zOld As Single
     Private mSectionsDXF As Dictionary(Of String, String)
     Private mTouchPointCount As Integer = 0
+    Private mDrawLinesMilliseconds As Long
+    Private mFeedrateFont As New Font(OverlayFont, FontStyle.Regular)
+    Private WithEvents mArcBall As New clsArcBall
+    Private namedViews As New Dictionary(Of String, SavedView)
+    Private mSavedView As SavedView
+    Private viewHistory As New List(Of SavedView)
+    Private viewHistoryIndex As Integer
+
+    Private Shared mMeasurement As New clsMeasurement
+    Private Shared mExtentCenter As Vector3
+    Private Shared mDisplayLists3D As New clsDisplayLists3D
+    Private Shared mRotaryVector As Vector3
+
+    Public Overrides Property Cursor As Cursor = Cursors.Arrow
+
+    Private Delegate Sub delLine3D(Xs As Single, Ys As Single, Zs As Single, Xe As Single, Ye As Single, Ze As Single)
+    Private Delegate Sub delLineEnd3D(Xe As Single, Ye As Single, Ze As Single)
+    Private Delegate Sub delDrawPolyArc(Xctr As Single, Yctr As Single, Zctr As Single,
+                            Xe As Single, Xs As Single,
+                            Ye As Single, Ys As Single,
+                            Ze As Single, Zs As Single,
+                            r As Single,
+                            Startang As Single,
+                            Endang As Single,
+                            ArcDir As Integer,
+                            Wplane As Integer)
+    Private Line3D As delLine3D
+    Private LineEnd3D As delLineEnd3D
+    Private DrawPolyArc As delDrawPolyArc
+    Private isInitialized As Boolean
+
+
+    Private Enum enDrawMethod
+        INIT
+        DRAW
+        DXF
+    End Enum
+    Private drawMethod As enDrawMethod
+    Private Sub SetDrawDelegates(dm As enDrawMethod)
+        drawMethod = dm
+        Select Case drawMethod
+            Case enDrawMethod.INIT
+                Line3D = AddressOf Line3dInit
+                LineEnd3D = AddressOf LineEnd3dInit
+                DrawPolyArc = AddressOf PolyArcDraw
+            Case enDrawMethod.DRAW
+                Line3D = AddressOf Line3dDraw
+                LineEnd3D = AddressOf LineEnd3dDraw
+                DrawPolyArc = AddressOf PolyArcDraw
+            Case enDrawMethod.DXF
+                Line3D = AddressOf Line3dDxf
+                LineEnd3D = AddressOf LineEnd3dDxf
+                DrawPolyArc = AddressOf PolyArcDXF
+        End Select
+    End Sub
+
+    Private Sub Line3dDxf(Xs As Single, Ys As Single, Zs As Single, Xe As Single, Ye As Single, Ze As Single)
+        Dim sp = Vector3.Transform(New Vector3(Xs, Ys, Zs), mViewMatrix)
+        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        'We need to add 3d points to the displaylist so we can use inverse matrix to get the actual position
+        'Line2D(sp.X, sp.Y, ep.X, ep.Y)
+        Output_DXF_Section("@LINE", xOld, yOld, zOld, ep.X, ep.Y, ep.Z)
+        xOld = ep.X
+        yOld = ep.Y
+        zOld = ep.Z
+    End Sub
+
+    Private Sub Line3dInit(Xs As Single, Ys As Single, Zs As Single, Xe As Single, Ye As Single, Ze As Single)
+        Xs *= mMasterGfxAdjustScale
+        Ys *= mMasterGfxAdjustScale
+        Zs *= mMasterGfxAdjustScale
+        Xe *= mMasterGfxAdjustScale
+        Ye *= mMasterGfxAdjustScale
+        Ze *= mMasterGfxAdjustScale
+        mDisplayLists3D.AddVector(Vector3.Transform(New Vector3(Xs, Ys, Zs), mRotaryMatrix))
+        mDisplayLists3D.AddVector(Vector3.Transform(New Vector3(Xe, Ye, Ze), mRotaryMatrix))
+    End Sub
+
+    Private Sub Line3dDraw(Xs As Single, Ys As Single, Zs As Single, Xe As Single, Ye As Single, Ze As Single)
+        Xs *= mMasterGfxAdjustScale
+        Ys *= mMasterGfxAdjustScale
+        Zs *= mMasterGfxAdjustScale
+        Xe *= mMasterGfxAdjustScale
+        Ye *= mMasterGfxAdjustScale
+        Ze *= mMasterGfxAdjustScale
+
+        Dim sp = Vector3.Transform(New Vector3(Xs, Ys, Zs), mViewMatrix)
+        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        'We need to add 3d points to the displaylist so we can use inverse matrix to get the actual position
+        Line2D(sp.X, sp.Y, ep.X, ep.Y)
+        xOld = ep.X
+        yOld = ep.Y
+        zOld = ep.Z
+    End Sub
+
+    Private Sub LineEnd3dInit(Xe As Single, Ye As Single, Ze As Single)
+        Xe *= mMasterGfxAdjustScale
+        Ye *= mMasterGfxAdjustScale
+        Ze *= mMasterGfxAdjustScale
+        mDisplayLists3D.AddVector(Vector3.Transform(New Vector3(Xe, Ye, Ze), mRotaryMatrix))
+    End Sub
+
+    Private Sub LineEnd3dDraw(Xe As Single, Ye As Single, Ze As Single)
+        Xe *= mMasterGfxAdjustScale
+        Ye *= mMasterGfxAdjustScale
+        Ze *= mMasterGfxAdjustScale
+        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        AddLineEndpoint(ep.X, ep.Y)
+        xOld = ep.X
+        yOld = ep.Y
+        zOld = ep.Z
+    End Sub
+    Private Sub Point3dDraw(Xe As Single, Ye As Single, Ze As Single)
+        Xe *= mMasterGfxAdjustScale
+        Ye *= mMasterGfxAdjustScale
+        Ze *= mMasterGfxAdjustScale
+        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        mPoints2D.Add(New PointF(ep.X, ep.Y))
+    End Sub
+    Private Sub LineEnd3dDxf(Xe As Single, Ye As Single, Ze As Single)
+        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Output_DXF_Section("@LINE", xOld, yOld, zOld, ep.X, ep.Y, ep.Z)
+        xOld = ep.X
+        yOld = ep.Y
+        zOld = ep.Z
+    End Sub
+    Public Function HasMouse() As Boolean
+        Return ClientRectangle.Contains(PointToClient(Cursor.Position))
+    End Function
+
+    Public ReadOnly Property View() As SavedView
+        Get
+            Return mSavedView
+        End Get
+    End Property
+    Public Sub SetMaxAxis(m As Double)
+        If m > 5000 Then
+            mMasterGfxAdjustScale = 1
+        End If
+    End Sub
+    Public Sub SetView(v As SavedView)
+        mSavedView = v
+    End Sub
+    Public Sub CaptureView()
+        If Me.Visible Then
+            Dim newView = mArcBall.ActiveMatrix
+            mSavedView = New SavedView(newView, mViewRect, mRotateAbout3D)
+        End If
+    End Sub
+    Public Sub RestoreView()
+        If Me.Visible Then
+            mArcBall.ActiveMatrix = mSavedView.m
+            mViewRect = mSavedView.rect
+            mRotateAbout3D = mSavedView.rotatePoint
+            AdjustAspect()
+            SetViewMatrix3D()
+        End If
+    End Sub
+
+    Public Sub SaveView(Optional name As String = "")
+        Dim newView = mArcBall.ActiveMatrix
+        viewHistory.Add(New SavedView(newView, mViewRect, mRotateAbout3D))
+        viewHistoryIndex = viewHistory.Count - 1
+        If Not String.IsNullOrEmpty(name) Then
+            namedViews.Add(name, New SavedView(newView, mViewRect, mRotateAbout3D))
+        End If
+    End Sub
+
+    Public Sub SetPreviousView()
+        If viewHistoryIndex > 0 Then
+            viewHistoryIndex -= 1
+            mArcBall.ActiveMatrix = viewHistory.Item(viewHistoryIndex).m
+            mViewRect = viewHistory.Item(viewHistoryIndex).rect
+            mRotateAbout3D = viewHistory.Item(viewHistoryIndex).rotatePoint
+            AdjustAspect()
+            SetViewMatrix3D()
+        End If
+    End Sub
+
+    Public Sub SetNextView()
+        If viewHistoryIndex < viewHistory.Count - 1 Then
+            viewHistoryIndex += 1
+            mArcBall.ActiveMatrix = viewHistory.Item(viewHistoryIndex).m
+            mViewRect = viewHistory.Item(viewHistoryIndex).rect
+            mRotateAbout3D = viewHistory.Item(viewHistoryIndex).rotatePoint
+
+            AdjustAspect()
+            SetViewMatrix3D()
+        End If
+    End Sub
+
+    Public Sub ResetViewHistory()
+        For Each s As MG_BasicViewer In mAll_Siblings
+            s.viewHistory.Clear()
+            s.viewHistoryIndex = 0
+        Next
+    End Sub
 
     Public Sub InitMyNeighbors()
         mMyNeighborhood.Clear()
-        DrawAllSelectionOverlays = AddressOf DrawSelectionOverlay
+        DrawGraphicsOverlaysAllViews = AddressOf DrawGraphicsOverlay
 
         For Each s As MG_BasicViewer In mAll_Siblings
-            If s.Parent Is Parent Then
+            If s.Parent Is Me.Parent Then
                 mMyNeighborhood.Add(s)
                 If s IsNot Me Then 'We already added Me above so don't do it again.
-                    DrawAllSelectionOverlays = DirectCast([Delegate].Combine(DrawAllSelectionOverlays, New DrawAllSelectionOverlayDelegate(AddressOf s.DrawSelectionOverlay)), DrawAllSelectionOverlayDelegate)
+                    Me.DrawGraphicsOverlaysAllViews = DirectCast([Delegate].Combine(DrawGraphicsOverlaysAllViews, New DrawAllSelectionOverlayDelegate(AddressOf s.DrawGraphicsOverlay)), DrawAllSelectionOverlayDelegate)
                 End If
             End If
         Next
 
-        For Each s As MG_BasicViewer In MG_BasicViewer.mAll_Siblings
-            If s.Parent Is Parent Then
-                s.DrawAllSelectionOverlays = DrawAllSelectionOverlays
-                s.mMyNeighborhood = mMyNeighborhood
+        For Each s As MG_BasicViewer In mAll_Siblings
+            If s.Parent Is Me.Parent Then
+                s.DrawGraphicsOverlaysAllViews = Me.DrawGraphicsOverlaysAllViews
+                s.mMyNeighborhood = Me.mMyNeighborhood
             End If
         Next
 
     End Sub
-
+    Private Sub DrawAllKeyPointsOverlay()
+        For Each s As MG_BasicViewer In mAll_Siblings
+            If s.Visible Then s.DrawKeyPointsOverlay()
+        Next
+    End Sub
 #Region "Properties"
+
+
     Protected Friend mMyNeighborhood As New List(Of MG_BasicViewer)
     Private ReadOnly Property MyNeighborhood() As List(Of MG_BasicViewer)
         Get
@@ -221,6 +499,53 @@ Public Class MG_BasicViewer
         End Get
     End Property
 
+    Private Shared mMasterGfxAdjustScale As Integer = 10
+    Public Property MasterGfxAdjustScale As Integer
+        Get
+            Return mMasterGfxAdjustScale
+        End Get
+        Set(value As Integer)
+            mMasterGfxAdjustScale = value
+        End Set
+    End Property
+
+    Private Shared mMachineUnits As MachineUnits = MachineUnits.ENGLISH
+    <Description("Set or get the display uvalue units"), Category("Custom")>
+    Public Property MachineUnits() As MachineUnits
+        Get
+            Return mMachineUnits
+        End Get
+        Set(value As MachineUnits)
+            mMachineUnits = value
+        End Set
+    End Property
+
+    Private Shared mPerformLineFixup As Boolean = True
+    <Description("Corrects graphics drawing gaps when lines are off screen"),
+    Category("Custom"),
+    DefaultValue(True)>
+    Public Property PerformLineFixup() As Boolean
+        Get
+            Return mPerformLineFixup
+        End Get
+        Set(value As Boolean)
+            mPerformLineFixup = value
+        End Set
+    End Property
+
+    Private Shared mDrawOverlayText As Boolean = True
+    <Description("Draw text overlay"),
+    Category("Custom"),
+    DefaultValue(True)>
+    Public Property DrawOverlayText() As Boolean
+        Get
+            Return mDrawOverlayText
+        End Get
+        Set(value As Boolean)
+            mDrawOverlayText = value
+        End Set
+    End Property
+
     Private mIsShared As Boolean = False
     <Description("Set or get whether or not the control uses shared drawing"),
     Category("Custom"),
@@ -229,20 +554,20 @@ Public Class MG_BasicViewer
         Get
             Return mIsShared
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mIsShared = value
         End Set
     End Property
 
-    Private mMotionRecords As New List(Of clsMotionRecord)
+    Private mAllMotionRecords As New List(Of clsMotionRecord)
     <Browsable(False)>
-    Public ReadOnly Property MotionRecords() As List(Of clsMotionRecord)
+    Public ReadOnly Property AllMotionRecords() As List(Of clsMotionRecord)
         Get
-            Return mMotionRecords
+            Return mAllMotionRecords
         End Get
     End Property
-    Public Sub SetMotionBlocks(ByVal mb As List(Of clsMotionRecord))
-        mMotionRecords = mb
+    Public Sub SetMotionBlocks(mb As List(Of clsMotionRecord))
+        mAllMotionRecords = mb
     End Sub
 
     Private Shared mMaxSelectionHits As Integer = 16
@@ -251,10 +576,54 @@ Public Class MG_BasicViewer
     DefaultValue(False)>
     Public Property MaxSelectionHits() As Integer
         Get
-            Return mMaxSelectionHits
+            If ViewManipMode = ManipMode.MEASURE Or ViewManipMode = ManipMode.SETROTATE Then
+                Return 1
+            Else
+                Return mMaxSelectionHits
+            End If
         End Get
-        Set(ByVal value As Integer)
+        Set(value As Integer)
             mMaxSelectionHits = value
+        End Set
+    End Property
+
+
+    Private Shared mDrawFeedRates As Boolean
+    <Description("Determines if the feedrates are drawn."),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property DrawFeedRates() As Boolean
+        Get
+            Return mDrawFeedRates
+        End Get
+        Set(value As Boolean)
+            mDrawFeedRates = value
+        End Set
+    End Property
+
+    Private Shared mDrawCutterComp As Boolean
+    <Description("Determines if the cutter comp markers L R is drawn."),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property DrawCutterComp() As Boolean
+        Get
+            Return mDrawCutterComp
+        End Get
+        Set(value As Boolean)
+            mDrawCutterComp = value
+        End Set
+    End Property
+
+    Private Shared mDrawIncAbs As Boolean
+    <Description("Determines if the incrementak or absolute markers L R are drawn."),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property DrawIncAbs() As Boolean
+        Get
+            Return mDrawIncAbs
+        End Get
+        Set(value As Boolean)
+            mDrawIncAbs = value
         End Set
     End Property
 
@@ -266,7 +635,7 @@ Public Class MG_BasicViewer
         Get
             Return mDrawOnPaint
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawOnPaint = value
         End Set
     End Property
@@ -279,8 +648,32 @@ Public Class MG_BasicViewer
         Get
             Return mColorByMotionType
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mColorByMotionType = value
+        End Set
+    End Property
+
+    Private Shared mColorMotionByDefault As Boolean = False
+    <Description("Use default color instead of tool colors."),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property DrawMotionWithDefaultColor() As Boolean
+        Get
+            Return mColorMotionByDefault
+        End Get
+        Set(value As Boolean)
+            mColorMotionByDefault = value
+        End Set
+    End Property
+
+    Private mMotionColorDefault As Color = Color.Blue
+    <Description("default color."), Category("Custom")>
+    Public Property MotionColor_Default() As Color
+        Get
+            Return mMotionColorDefault
+        End Get
+        Set(value As Color)
+            mMotionColorDefault = value
         End Set
     End Property
 
@@ -290,7 +683,7 @@ Public Class MG_BasicViewer
         Get
             Return mRapidColor
         End Get
-        Set(ByVal value As Color)
+        Set(value As Color)
             mRapidColor = value
         End Set
     End Property
@@ -301,7 +694,7 @@ Public Class MG_BasicViewer
         Get
             Return mLinearColor
         End Get
-        Set(ByVal value As Color)
+        Set(value As Color)
             mLinearColor = value
         End Set
     End Property
@@ -312,7 +705,7 @@ Public Class MG_BasicViewer
         Get
             Return mArcCWColor
         End Get
-        Set(ByVal value As Color)
+        Set(value As Color)
             mArcCWColor = value
         End Set
     End Property
@@ -323,7 +716,7 @@ Public Class MG_BasicViewer
         Get
             Return mArcCCWColor
         End Get
-        Set(ByVal value As Color)
+        Set(value As Color)
             mArcCCWColor = value
         End Set
     End Property
@@ -336,7 +729,7 @@ Public Class MG_BasicViewer
         Get
             Return mDrawDogLeg
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawDogLeg = value
         End Set
     End Property
@@ -350,7 +743,7 @@ Public Class MG_BasicViewer
         Get
             Return mDrawOverlayInfo
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawOverlayInfo = value
         End Set
     End Property
@@ -363,8 +756,35 @@ Public Class MG_BasicViewer
         Get
             Return mReverseMouseWheel
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mReverseMouseWheel = value
+        End Set
+    End Property
+
+    Private Shared mMB2Pan As Boolean = False
+    <Description("MB2 Pan"),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property MB2Pan() As Boolean
+        Get
+            Return mMB2Pan
+        End Get
+        Set(value As Boolean)
+            mMB2Pan = value
+        End Set
+    End Property
+
+    Private Shared mMouseWheelZoomFactor As Single = 1.0
+    <Description("Additional factor applied to mouse wheel zoom"),
+    Category("Custom"),
+    DefaultValue(1.0)>
+    Public Property MouseWheelZoomFctor() As Single
+        Get
+            Return mMouseWheelZoomFactor
+        End Get
+        Set(value As Single)
+            If value = 0 Then value = 1
+            mMouseWheelZoomFactor = value
         End Set
     End Property
 
@@ -375,7 +795,7 @@ Public Class MG_BasicViewer
         Get
             Return mOverlayFont
         End Get
-        Set(ByVal value As Font)
+        Set(value As Font)
             mOverlayFont = value
         End Set
     End Property
@@ -388,7 +808,7 @@ Public Class MG_BasicViewer
         Get
             Return mDynamicViewManipulation
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDynamicViewManipulation = value
         End Set
     End Property
@@ -396,34 +816,44 @@ Public Class MG_BasicViewer
     Private Shared mViewManipMode As ManipMode = ManipMode.NONE
     <Description("Sets or gets the view manipulation mode"),
     Category("Custom"),
-    DefaultValue(ManipMode.NONE)>
+    DefaultValue(ManipMode.NONE), Browsable(False)>
     Public Property ViewManipMode() As ManipMode
         Get
             Return mViewManipMode
         End Get
-        Set(ByVal value As ManipMode)
-            timerQuickPick.Enabled = (mViewManipMode = ManipMode.SELECTION)
-            mViewManipMode = value
-            Select Case mViewManipMode
-                Case ManipMode.PAN
-                    Cursor = Cursors.SizeAll
-                Case ManipMode.FENCE
-                    Cursor = Cursors.Cross
-                Case ManipMode.NONE
-                    Cursor = Cursors.Default
-                Case ManipMode.ROTATE
-                    Cursor = Cursors.SizeNESW
-                Case ManipMode.SELECTION
-                    Cursor = mSelectCursor
-                Case ManipMode.ZOOM
-                    Cursor = Cursors.SizeNS
-            End Select
+        Set(value As ManipMode)
+            Try
+                timerQuickPick.Enabled = (mViewManipMode = ManipMode.SELECTION)
+                mViewManipMode = value
+                Select Case mViewManipMode
+                    Case ManipMode.PAN
+                        Cursor = Cursors.SizeAll
+                    Case ManipMode.FENCE
+                        Cursor = Cursors.Cross
+                    Case ManipMode.NONE
+                        Cursor = Cursors.Default
+                    Case ManipMode.ROTATE
+                        Cursor = Cursors.SizeNESW
+                    Case ManipMode.SELECTION
+                        Cursor = mSelectCursor
+                        mMeasurement.Reset()
+                    Case ManipMode.ZOOM
+                        Cursor = Cursors.SizeNS
+                    Case ManipMode.SETROTATE
+                        Cursor = mSetRotateCursor
+                    Case ManipMode.MEASURE
+                        Cursor = mMeasureCursor
+                End Select
 
-            For Each Sibling As MG_BasicViewer In MyNeighborhood
-                If Sibling.Name <> Name Then
-                    Sibling.Cursor = Cursor
-                End If
-            Next
+                For Each Sibling As MG_BasicViewer In MyNeighborhood
+                    If Sibling.Name <> Me.Name Then
+                        Sibling.Cursor = Me.Cursor
+                    End If
+                Next
+
+            Catch ex As Exception
+                'TODO remove this if it does not help
+            End Try
         End Set
     End Property
 
@@ -435,7 +865,7 @@ Public Class MG_BasicViewer
         Get
             Return mAxisIndicatorScale
         End Get
-        Set(ByVal value As Single)
+        Set(value As Single)
             mAxisIndicatorScale = value
         End Set
     End Property
@@ -448,7 +878,7 @@ Public Class MG_BasicViewer
         Get
             Return mDrawAxisLines
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawAxisLines = value
         End Set
     End Property
@@ -461,11 +891,36 @@ Public Class MG_BasicViewer
         Get
             Return mDrawAxisIndicator
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawAxisIndicator = value
         End Set
     End Property
 
+    Private Shared mDrawEndPoints As Boolean = False
+    <Description("Draw a point at the end of each element"),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property DrawEndPoints() As Boolean
+        Get
+            Return mDrawEndPoints
+        End Get
+        Set(value As Boolean)
+            mDrawEndPoints = value
+        End Set
+    End Property
+
+    Private Shared mDrawDirectionFlags As Boolean = False
+    <Description("Draw a direction flag at the mid point of each element"),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property DrawDirectionFlags() As Boolean
+        Get
+            Return mDrawDirectionFlags
+        End Get
+        Set(value As Boolean)
+            mDrawDirectionFlags = value
+        End Set
+    End Property
 
     Private Shared mDrawAxisLimits As Boolean = False
     <Description("Draw axis limits"),
@@ -475,11 +930,23 @@ Public Class MG_BasicViewer
         Get
             Return mDrawAxisLimits
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawAxisLimits = value
         End Set
     End Property
 
+    Private Shared mDrawGrid As Boolean = False
+    <Description("Draw grid"),
+    Category("Custom"),
+    DefaultValue(False)>
+    Public Property DrawGrid() As Boolean
+        Get
+            Return mDrawGrid
+        End Get
+        Set(value As Boolean)
+            mDrawGrid = value
+        End Set
+    End Property
 
     Private Shared mDrawRapidLines As Boolean = True
     <Description("Draw raid tool motion lines"),
@@ -489,33 +956,46 @@ Public Class MG_BasicViewer
         Get
             Return mDrawRapidLines
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawRapidLines = value
         End Set
     End Property
 
     Private Shared mDrawRapidPoints As Boolean = True
-    <Description("Draw raid tool motion points"),
+    <Description("Draw rapid tool motion points"),
     Category("Custom"),
     DefaultValue(True)>
     Public Property DrawRapidPoints() As Boolean
         Get
-            Return mDrawRapidPoints AndAlso (Not mMouseDownAndMoving)
+            Return mDrawRapidPoints AndAlso (Not mMouseDownAndMoving) AndAlso (Not drawMethod = enDrawMethod.INIT)
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mDrawRapidPoints = value
         End Set
     End Property
 
-    Private Shared mArcAxis As Axis = Axis.Z
+    Private Shared mDrawToolDia As Boolean = True
+    <Description("Draw tool circle"),
+    Category("Custom"),
+    DefaultValue(True)>
+    Public Property DrawToolDia() As Boolean
+        Get
+            Return mDrawToolDia
+        End Get
+        Set(value As Boolean)
+            mDrawToolDia = value
+        End Set
+    End Property
+
+    Private Shared mArcAxis As ArcAxis = ArcAxis.Z
     <Description("Sets or gets the plane that arcs will be drawn on"),
     Category("Custom"),
-    DefaultValue(Axis.Z)>
-    Public Property ArcAxis() As Axis
+    DefaultValue(ArcAxis.Z)>
+    Public Property ArcAxis() As ArcAxis
         Get
             Return mArcAxis
         End Get
-        Set(ByVal value As Axis)
+        Set(value As ArcAxis)
             mArcAxis = value
         End Set
     End Property
@@ -527,78 +1007,86 @@ Public Class MG_BasicViewer
         Get
             Return mRotaryType
         End Get
-        Set(ByVal value As RotaryMotionType)
+        Set(value As RotaryMotionType)
             mRotaryType = value
         End Set
     End Property
 
-    Private Shared mRotaryPlane As Axis = Axis.X
+    Private Shared mRotaryPlane As ArcAxis = ArcAxis.X
     <Description("Sets or gets the plane that the fourth axis rotates on"),
     Category("Custom"),
-    DefaultValue(Axis.X)>
-    Public Property RotaryPlane() As Axis
+    DefaultValue(ArcAxis.X)>
+    Public Property RotaryPlane() As ArcAxis
         Get
             Return mRotaryPlane
         End Get
-        Set(ByVal value As Axis)
+        Set(value As ArcAxis)
             mRotaryPlane = value
+            Select Case value
+                Case ArcAxis.X
+                    mRotaryVector = New Vector3(1, 0, 0)
+                Case ArcAxis.Y
+                    mRotaryVector = New Vector3(0, 1, 0)
+                Case ArcAxis.Z
+                    mRotaryVector = New Vector3(0, 0, 1)
+            End Select
         End Set
     End Property
 
-    Private Shared mRotaryDirection As RotaryDirection = MacGen.RotaryDirection.CW
+    Private Shared mRotaryDirection As RotaryDirection = RotaryDirection.CW
     <Description("Sets or gets the direction of the fourth axis"),
     Category("Custom"),
-    DefaultValue(MacGen.RotaryDirection.CW)>
+    DefaultValue(RotaryDirection.CW)>
     Public Property RotaryDirection() As RotaryDirection
         Get
             Return mRotaryDirection
         End Get
-        Set(ByVal value As RotaryDirection)
+        Set(value As RotaryDirection)
             mRotaryDirection = value
         End Set
     End Property
 
-    Private mPitch As Single = 0
+    Private mPitchX As Single = 0
     <Description("Sets or gets the X axis rotation"),
     Category("Custom"),
     DefaultValue(0)>
     Public Property Pitch() As Single
         Get
-            Return mPitch * (180 / PI_S)
+            Return mPitchX * (180 / PI_S)
         End Get
-        Set(ByVal Value As Single)
-            mPitch = Value * (PI_S / 180)
-            CalcAngle()
+        Set(Value As Single)
+            mPitchX = Value * (PI_S / 180)
+            mArcBall.SetPitchRollYaw(mPitchX, mRollY, mYawZ)
             RaiseEvent OnViewOrientationChanged(Pitch, Roll, Yaw)
         End Set
     End Property
 
-    Private mRoll As Single = 0
+    Private mRollY As Single = 0
     <Description("Sets or gets the Y axis rotation"),
     Category("Custom"),
     DefaultValue(0)>
     Public Property Roll() As Single
         Get
-            Return mRoll * (180 / PI_S)
+            Return mRollY * (180 / PI_S)
         End Get
-        Set(ByVal Value As Single)
-            mRoll = Value * (PI_S / 180)
-            CalcAngle()
+        Set(Value As Single)
+            mRollY = Value * (PI_S / 180)
+            mArcBall.SetPitchRollYaw(mPitchX, mRollY, mYawZ)
             RaiseEvent OnViewOrientationChanged(Pitch, Roll, Yaw)
         End Set
     End Property
 
-    Private mYaw As Single = 0
+    Private mYawZ As Single = 0
     <Description("Sets or gets the Z axis rotation"),
     Category("Custom"),
     DefaultValue(0)>
     Public Property Yaw() As Single
         Get
-            Return mYaw * (180 / PI_S)
+            Return mYawZ * (180 / PI_S)
         End Get
-        Set(ByVal Value As Single)
-            mYaw = Value * (PI_S / 180)
-            CalcAngle()
+        Set(Value As Single)
+            mYawZ = Value * (PI_S / 180)
+            mArcBall.SetPitchRollYaw(mPitchX, mRollY, mYawZ)
             RaiseEvent OnViewOrientationChanged(Pitch, Roll, Yaw)
         End Set
     End Property
@@ -608,9 +1096,15 @@ Public Class MG_BasicViewer
     Category("Custom"),
     DefaultValue(0)>
     Public Property FourthAxis() As Single
-        Set(ByVal Value As Single)
-            mRotary = Value * (-RotaryDirection)
-            CalcAngle()
+        Set(Value As Single)
+            If Value <> mRotary Then
+                mRotary = Value
+                mRotaryMatrix = Matrix44.Identity()
+                If mRotary <> 0 Then
+                    mRotaryMatrix = Matrix44.CreateFromAxisAngle(mRotaryVector, -mRotary * RotaryDirection)
+                End If
+                SetViewMatrix3D()
+            End If
         End Set
         Get
             Return mRotary
@@ -619,23 +1113,28 @@ Public Class MG_BasicViewer
 
     Private mArcQuality As Single = VARIABLE_QUALITY
     Private mSegAngle As Single = ONE_RADIAN / 16 'angle of circular segments
+    Private mArcSegCount As Integer = 360
     <Description("Sets the quality of arcs. >=8 AND <=1440"),
     Category("Custom"),
     DefaultValue(16)>
     Public WriteOnly Property ArcSegmentCount() As Integer
-        Set(ByVal value As Integer)
-            If mArcQuality = FIXED_QUALITY Then
-                value = 36
+        Set(value As Integer)
+            If mArcQuality = FIXED_FINE_QUALITY Then
+                mArcSegCount = 72
             Else
                 'Set min and max values
-                If value < 8 Then value = 8
-                If value > 720 Then value = 720
+                If value < 16 Then mArcSegCount = 16
+                If value > 720 Then mArcSegCount = 720
+
+                If mAllMotionRecords.Count < 5000 Then
+                    mArcSegCount = 72
+                End If
             End If
-            mSegAngle = ONE_RADIAN / value
+            mSegAngle = ONE_RADIAN / mArcSegCount
         End Set
     End Property
 
-    Private Shared mMachineType As MachineType = MacGen.MachineType.MILL
+    Private Shared mMachineType As MachineType = MachineType.MILL
     <Description("The type of machine"),
     Category("Custom"),
     DefaultValue(MachineType.MILL)>
@@ -643,7 +1142,7 @@ Public Class MG_BasicViewer
         Get
             Return mMachineType
         End Get
-        Set(ByVal value As MachineType)
+        Set(value As MachineType)
             mMachineType = value
         End Set
     End Property
@@ -654,7 +1153,7 @@ Public Class MG_BasicViewer
         Get
             Return mLimits
         End Get
-        Set(ByVal value As Single())
+        Set(value As Single())
             mLimits = value
         End Set
     End Property
@@ -665,7 +1164,7 @@ Public Class MG_BasicViewer
         Get
             Return mFilterUpperZ
         End Get
-        Set(ByVal value As Single)
+        Set(value As Single)
             mFilterUpperZ = value
         End Set
     End Property
@@ -676,7 +1175,7 @@ Public Class MG_BasicViewer
         Get
             Return mFilterLowerZ
         End Get
-        Set(ByVal value As Single)
+        Set(value As Single)
             mFilterLowerZ = value
         End Set
     End Property
@@ -687,7 +1186,7 @@ Public Class MG_BasicViewer
         Get
             Return mFilterZCrossing
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mFilterZCrossing = value
         End Set
     End Property
@@ -698,7 +1197,7 @@ Public Class MG_BasicViewer
         Get
             Return mFilterZ
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             mFilterZ = value
         End Set
     End Property
@@ -706,11 +1205,11 @@ Public Class MG_BasicViewer
     Private Shared mSelectedMotionIndex As Integer
     <Browsable(False)>
     Public Property SelectedMotionIndex() As Integer
-        Set(ByVal value As Integer)
+        Set(value As Integer)
             mSelectedMotionIndex = value
         End Set
         Get
-            If mSelectionHitIndices.Count = 0 Then
+            If mDisplayLists2DSelectionIndices.Count = 0 Then
                 Return -1
             Else
                 Return mSelectedMotionIndex 'MotionRecords.IndexOf(mSelectionHits(0))
@@ -721,15 +1220,20 @@ Public Class MG_BasicViewer
     Private Shared mRangeEnd As Integer
     <Browsable(False)>
     Public Property RangeEnd() As Integer
-        Set(ByVal value As Integer)
+        Set(value As Integer)
             If value = 0 Then
-                mRangeEnd = MotionRecords.Count - 1
+                mRangeEnd = AllMotionRecords.Count - 1
+                mRangeStart = 0
             Else
-                If value > MotionRecords.Count Then
-                    mRangeEnd = MotionRecords.Count - 1
+                If value > AllMotionRecords.Count Then
+                    mRangeEnd = AllMotionRecords.Count - 1
+                    mRangeStart = 0
                 Else
                     mRangeEnd = value
                 End If
+            End If
+            If mRangeStart > mRangeEnd Then
+                mRangeStart = 0
             End If
         End Set
         Get
@@ -740,7 +1244,7 @@ Public Class MG_BasicViewer
     <Browsable(False)>
     Public ReadOnly Property RangeMax() As Integer
         Get
-            Return MotionRecords.Count - 1
+            Return AllMotionRecords.Count - 1
         End Get
     End Property
 
@@ -750,26 +1254,25 @@ Public Class MG_BasicViewer
         Get
             Return mTabletMode
         End Get
-        Set(ByVal value As Boolean)
+        Set(value As Boolean)
             If value = True Then
                 mSelectionPixRect.Width = 24
                 mSelectionPixRect.Height = 24
-                rmbView.ImageScalingSize = New Size(24, 24)
             Else
-                rmbView.ImageScalingSize = New Size(16, 16)
-                mSelectionPixRect.Width = 6
-                mSelectionPixRect.Height = 6
+                mSelectionPixRect.Width = 12
+                mSelectionPixRect.Height = 12
             End If
             mTabletMode = value
+            SetContextImages()
         End Set
     End Property
 
     Private Shared mRangeStart As Integer = 0
     <Browsable(False)>
     Public Property RangeStart() As Integer
-        Set(ByVal value As Integer)
+        Set(value As Integer)
             mRangeStart = value
-            If value > MotionRecords.Count Then
+            If value > AllMotionRecords.Count Then
                 mRangeStart = 0
             End If
         End Set
@@ -784,7 +1287,7 @@ Public Class MG_BasicViewer
     ' touch move event handler
     ' EventArgs passed to Touch handlers
     Public Class WMTouchEventArgs
-        Inherits System.EventArgs
+        Inherits EventArgs
         ' Private data members
         Private x As Integer
         ' touch x client coordinate in pixels
@@ -807,7 +1310,7 @@ Public Class MG_BasicViewer
             Get
                 Return x
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 x = value
             End Set
         End Property
@@ -815,7 +1318,7 @@ Public Class MG_BasicViewer
             Get
                 Return y
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 y = value
             End Set
         End Property
@@ -823,7 +1326,7 @@ Public Class MG_BasicViewer
             Get
                 Return m_id
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 m_id = value
             End Set
         End Property
@@ -831,7 +1334,7 @@ Public Class MG_BasicViewer
             Get
                 Return m_flags
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 m_flags = value
             End Set
         End Property
@@ -839,7 +1342,7 @@ Public Class MG_BasicViewer
             Get
                 Return m_mask
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 m_mask = value
             End Set
         End Property
@@ -847,7 +1350,7 @@ Public Class MG_BasicViewer
             Get
                 Return m_time
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 m_time = value
             End Set
         End Property
@@ -855,7 +1358,7 @@ Public Class MG_BasicViewer
             Get
                 Return m_contactX
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 m_contactX = value
             End Set
         End Property
@@ -863,7 +1366,7 @@ Public Class MG_BasicViewer
             Get
                 Return m_contactY
             End Get
-            Set(ByVal value As Integer)
+            Set(value As Integer)
                 m_contactY = value
             End Set
         End Property
@@ -876,7 +1379,7 @@ Public Class MG_BasicViewer
     End Class
 
     Public Class WMDoubleTouchEventArgs
-        Inherits System.EventArgs
+        Inherits EventArgs
         ' Private data members
         Private x(1) As Integer        ' touch x client coordinate in pixels
         Private y(1) As Integer        ' touch y client coordinate in pixels
@@ -885,7 +1388,7 @@ Public Class MG_BasicViewer
             Get
                 Return x
             End Get
-            Set(ByVal value As Integer())
+            Set(value As Integer())
                 x = value
             End Set
         End Property
@@ -893,7 +1396,7 @@ Public Class MG_BasicViewer
             Get
                 Return y
             End Get
-            Set(ByVal value As Integer())
+            Set(value As Integer())
                 y = value
             End Set
         End Property
@@ -909,7 +1412,7 @@ Public Class MG_BasicViewer
     ' Since the managed layer between C# and WinAPI functions does not 
     ' exist at the moment for multi-touch related functions this part of 
     ' the code is required to replicate definitions from winuser.h file.
-
+    Private Const WM_INPUT As Integer = &HFF
     ' Touch event window message constants [winuser.h]
     Private Const WM_TOUCH As Integer = &H240
     Private Const SM_TABLETPC As Integer = 86
@@ -928,18 +1431,19 @@ Public Class MG_BasicViewer
     Private Const TOUCHINPUTMASKF_EXTRAINFO As Integer = &H2
     ' the dwExtraInfo field is valid
     Private Const TOUCHINPUTMASKF_CONTACTAREA As Integer = &H4
+    Private Const maxDrawTime As Integer = 500
     ' the cxContact and cyContact fields are valid
     ' Touch API defined structures [winuser.h]
     <StructLayout(LayoutKind.Sequential)>
     Private Structure TOUCHINPUT
         Public x As Integer
         Public y As Integer
-        Public hSource As System.IntPtr
+        Public hSource As IntPtr
         Public dwID As Integer
         Public dwFlags As Integer
         Public dwMask As Integer
         Public dwTime As Integer
-        Public dwExtraInfo As System.IntPtr
+        Public dwExtraInfo As IntPtr
         Public cxContact As Integer
         Public cyContact As Integer
     End Structure
@@ -953,19 +1457,19 @@ Public Class MG_BasicViewer
     ' Currently touch/multitouch access is done through unmanaged code
     ' We must p/invoke into user32 [winuser.h]
     <DllImport("user32")>
-    Private Shared Function RegisterTouchWindow(ByVal hWnd As System.IntPtr, ByVal ulFlags As UInteger) As <MarshalAs(UnmanagedType.Bool)> Boolean
+    Private Shared Function RegisterTouchWindow(hWnd As IntPtr, ulFlags As UInteger) As <MarshalAs(UnmanagedType.Bool)> Boolean
     End Function
 
     <DllImport("user32")>
-    Private Shared Function GetSystemMetrics(ByVal smIndex As Integer) As Integer
+    Private Shared Function GetSystemMetrics(smIndex As Integer) As Integer
     End Function
 
     <DllImport("user32")>
-    Private Shared Function GetTouchInputInfo(ByVal hTouchInput As System.IntPtr, ByVal cInputs As Integer, <[In](), Out()> ByVal pInputs As TOUCHINPUT(), ByVal cbSize As Integer) As <MarshalAs(UnmanagedType.Bool)> Boolean
+    Private Shared Function GetTouchInputInfo(hTouchInput As IntPtr, cInputs As Integer, <[In](), Out()> pInputs As TOUCHINPUT(), cbSize As Integer) As <MarshalAs(UnmanagedType.Bool)> Boolean
     End Function
 
     <DllImport("user32")>
-    Private Shared Sub CloseTouchInputHandle(ByVal lParam As System.IntPtr)
+    Private Shared Sub CloseTouchInputHandle(lParam As IntPtr)
     End Sub
 
     ' Attributes
@@ -980,11 +1484,25 @@ Public Class MG_BasicViewer
     ' but the window procedure can be overriden, if needed.
     ' in:
     '      m       message
-    <PermissionSet(SecurityAction.Demand, Name:="FullTrust")>
     Protected Overrides Sub WndProc(ByRef m As Message)
         ' Decode and handle WM_TOUCH message.
+        'Debug.Print(m.Msg)
+        'Debug.Print(WM_INPUT)
         Dim handled As Boolean
         Select Case m.Msg
+            'Case 49661
+            '    If Dx3.IsAvailable Then
+            '        Dx3.ProcessWindowMessage(m.Msg, m.WParam, m.LParam)
+            '        handled = True
+            '    End If
+            '    Exit Select
+            'Case WM_INPUT
+            '    If Dx3.IsAvailable Then
+            '        Dx3.ProcessWindowMessage(m.Msg, m.WParam, m.LParam)
+            '        handled = True
+            '    End If
+            '    Exit Select
+
             Case WM_TOUCH
                 handled = DecodeTouch(m)
                 Exit Select
@@ -996,7 +1514,7 @@ Public Class MG_BasicViewer
 
         If handled Then
             ' Acknowledge event if handled.
-            m.Result = New System.IntPtr(1)
+            m.Result = New IntPtr(1)
         Else
             ' Call parent WndProc for default message processing.
             MyBase.WndProc(m)
@@ -1009,7 +1527,7 @@ Public Class MG_BasicViewer
     '      number      int
     ' returns:
     '      lower word
-    Private Shared Function LoWord(ByVal number As Integer) As Integer
+    Private Shared Function LoWord(number As Integer) As Integer
         Return (number And &HFFFF)
     End Function
 
@@ -1081,7 +1599,7 @@ Public Class MG_BasicViewer
                 End If
                 If (te.Time - downTick) < SystemInformation.DoubleClickTime AndAlso
                     secondaryDist < (SystemInformation.DoubleClickSize.Width) Then
-                    Debug.Print(te.IsPrimaryContact.ToString)
+                    'Debug.Print(te.IsPrimaryContact.ToString)
                     RaiseEvent TouchDoubleDoubleTap(Me, te)
                 End If
                 If te.IsPrimaryContact Then
@@ -1128,22 +1646,17 @@ Public Class MG_BasicViewer
     End Function
 
 #End Region
-
-
-
-    Private Sub CalcAngle()
-        mCosRot = CSng(Math.Cos(mRotary))
-        mSinRot = CSng(Math.Sin(mRotary))
-        mSinYaw = CSng(Math.Sin(mYaw))
-        mCosYaw = CSng(Math.Cos(mYaw))
-        mSinRoll = CSng(Math.Sin(mRoll))
-        mCosRoll = CSng(Math.Cos(mRoll))
-        mSinPitch = CSng(Math.Sin(mPitch))
-        mCosPitch = CSng(Math.Cos(mPitch))
+    Private Sub SetViewMatrix3D()
+        'NOW USING A NEW MATRIX LIB THAT REQUIRES THE ORDER TO BE REVERSED.
+        mViewMatrix = Matrix44.Identity()
+        mViewMatrix *= mRotaryMatrix
+        mViewMatrix.Translation += New Vector3(-mRotateAbout3D.X, -mRotateAbout3D.Y, -mRotateAbout3D.Z)
+        mViewMatrix *= mArcBall.ActiveMatrix
     End Sub
 
-    Public Sub SetVisibleByLine(ByVal rangeStart As Integer, ByVal rangeEnd As Integer)
-        For Each m As clsMotionRecord In MotionRecords
+
+    Public Sub SetVisibleByLine(rangeStart As Integer, rangeEnd As Integer)
+        For Each m As clsMotionRecord In AllMotionRecords
             m.Visible = True
             If m.Linenumber < rangeStart OrElse m.Linenumber > rangeEnd Then
                 m.Visible = False
@@ -1153,24 +1666,24 @@ Public Class MG_BasicViewer
 
     Public Sub SetZFilter()
         If FilterZ Then
-            For Each m As clsMotionRecord In MotionRecords
+            For Each m As clsMotionRecord In AllMotionRecords
                 With m
                     .FilterZ = True
                     'If either start or end is within upper and lower then show
                     If mFilterZCrossing Then
-                        If (.Zpos <= mFilterUpperZ AndAlso .Zpos >= mFilterLowerZ) OrElse (.Zold <= mFilterUpperZ AndAlso .Zold >= mFilterLowerZ) Then
+                        If (.XYZpos.Z <= mFilterUpperZ AndAlso .XYZpos.Z >= mFilterLowerZ) OrElse (.XYZold.Z <= mFilterUpperZ AndAlso .XYZold.Z >= mFilterLowerZ) Then
                             .FilterZ = False
                         End If
 
                     Else 'If both start and end are within bounds then show
-                        If (.Zpos <= mFilterUpperZ AndAlso .Zpos >= mFilterLowerZ) AndAlso (.Zold <= mFilterUpperZ AndAlso .Zold >= mFilterLowerZ) Then
+                        If (.XYZpos.Z <= mFilterUpperZ AndAlso .XYZpos.Z >= mFilterLowerZ) AndAlso (.XYZold.Z <= mFilterUpperZ AndAlso .XYZold.Z >= mFilterLowerZ) Then
                             .FilterZ = False
                         End If
                     End If
                 End With
             Next
         Else
-            For Each m As clsMotionRecord In MotionRecords
+            For Each m As clsMotionRecord In AllMotionRecords
                 m.FilterZ = False
             Next
         End If
@@ -1179,13 +1692,13 @@ Public Class MG_BasicViewer
     End Sub
 
 
-    Public Sub SetRangeByLine(ByVal rangeStart As Integer, ByVal rangeEnd As Integer)
+    Public Sub SetRangeByLine(rangeStart As Integer, rangeEnd As Integer)
         If rangeEnd = 0 Then
             Me.RangeStart = 0
             Me.RangeEnd = 0
         Else
-            For r As Integer = 0 To MotionRecords.Count - 1
-                Dim mot As clsMotionRecord = MotionRecords(r)
+            For r As Integer = 0 To AllMotionRecords.Count - 1
+                Dim mot As clsMotionRecord = AllMotionRecords(r)
                 If mot.Linenumber = rangeStart Then
                     Me.RangeStart = r
                 End If
@@ -1198,46 +1711,115 @@ Public Class MG_BasicViewer
         End If
     End Sub
 
-    Private Sub MG_BasicViewer_BackColorChanged(ByVal sender As Object, ByVal e As System.EventArgs) Handles Me.BackColorChanged
+    Private Sub MG_BasicViewer_BackColorChanged(sender As Object, e As EventArgs) Handles Me.BackColorChanged
         mInverseColor = Color.FromArgb(Not BackColor.R, Not BackColor.G, Not BackColor.B)
     End Sub
 
-    Private Sub MG_BasicViewer_MouseWheel(ByVal sender As Object, ByVal e As System.Windows.Forms.MouseEventArgs) Handles Me.MouseWheel
+    Private Sub MG_BasicViewer_MouseWheel(sender As Object, e As MouseEventArgs) Handles Me.MouseWheel
         If ReverseMouseWheel Then
             If Math.Sign(e.Delta) = 1 Then
-                ZoomSceneAtMouse(1.1)
+                ZoomSceneAtMouse(CSng(1.1 * mMouseWheelZoomFactor))
             Else
-                ZoomSceneAtMouse(0.9)
+                ZoomSceneAtMouse(CSng(0.9 / mMouseWheelZoomFactor))
             End If
         Else
             If Math.Sign(e.Delta) = -1 Then
-                ZoomSceneAtMouse(1.1)
+                ZoomSceneAtMouse(CSng(1.1 * mMouseWheelZoomFactor))
             Else
-                ZoomSceneAtMouse(0.9)
+                ZoomSceneAtMouse(CSng(0.9 / mMouseWheelZoomFactor))
             End If
         End If
         CreateDisplayListsAndDraw()
     End Sub
 
-    Private Sub MG_BasicViewer_MouseDown(ByVal sender As Object, ByVal e As System.Windows.Forms.MouseEventArgs) Handles Me.MouseDown
-        mCurmanipMode = ViewManipMode
+    'Public Function NearestKeyPoint2D(mousePt As PointF, p As clsDisplayList2D) As PointF
+    '    Dim d1, d2 As Single
+    '    Dim first = p.Points2d.First
+    '    Dim last = p.Points2d.Last
+    '    Dim mr = mAllMotionRecords(p.MotionIndex)
+
+    '    Dim dist = Function(p1 As PointF, p2 As PointF)
+    '                   Return Math.Sqrt((p1.X - p2.X) ^ 2 + (p1.Y - p2.Y) ^ 2)
+    '               End Function
+
+    '    d1 = dist(mousePt, first)
+    '    d2 = dist(mousePt, last)
+    '    mHighlightKeypoint2D.X = mDisplayLists3D.HighlightKeypoint2D.X
+    '    mHighlightKeypoint2D.Y = mDisplayLists3D.HighlightKeypoint2D.Y
+    '    mSelKeypoint3D = mDisplayLists3D.HighlightKeypoint3D
+    '    'Return mHighlightKeypoint2D
+    '    If d1 < d2 Then
+    '        mSelKeypoint3D = GetVector3FromMotionRecord(mr, True)
+    '        mHighlightKeypoint2D.X = first.X
+    '        mHighlightKeypoint2D.Y = first.Y
+    '        Return first
+    '    Else
+    '        mSelKeypoint3D = GetVector3FromMotionRecord(mr, False)
+    '        mHighlightKeypoint2D.X = last.X
+    '        mHighlightKeypoint2D.Y = last.Y
+    '        Return last
+    '    End If
+    'End Function
+
+    'Private Function GetVector3FromMotionRecord(mr As clsMotionRecord, start As Boolean) As Vector3
+    '    mTempMatrix = Matrix44.Identity()
+    '    If start Then
+    '        mTempMatrix = Matrix44.CreateFromAxisAngle(mRotaryVector, -mr.OldRotaryPos * RotaryDirection)
+    '        Return Vector3.Transform(New Vector3(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z), mTempMatrix)
+    '    Else
+    '        mTempMatrix = Matrix44.CreateFromAxisAngle(mRotaryVector, -mr.NewRotaryPos * RotaryDirection)
+    '        Return Vector3.Transform(New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z), mTempMatrix)
+    '    End If
+    'End Function
+
+    Private Sub MG_BasicViewer_MouseDown(sender As Object, e As MouseEventArgs) Handles Me.MouseDown
         SelectedMotionIndex = -1
-        If e.Button = Windows.Forms.MouseButtons.Left Then
-            TabletMode = False
-            ContextMenuStrip = rmbView
-            ' Make a note that we "have the mouse".
-            If ViewManipMode = ManipMode.SELECTION Then
-                If mSelectionHits.Count >= 1 Then
-                    UpdateElementDetails()
-                    SelectedMotionIndex = MotionRecords.IndexOf(mSelectionHits(0))
-                    RaiseEvent OnSelection(mSelectionHits, 0)
-                    If mSelectionHits.Count > 1 AndAlso Cursor = mSelectEtcCursor Then
-                        ShowQuickPick()
+        ContextMenuStrip = rmbView
+        Try
+
+            If e.Button = MouseButtons.Left Then
+                ' Make a note that we "have the mouse".
+                If ViewManipMode = ManipMode.SELECTION Then
+                    If mSelectionHits.Count >= 1 Then
+                        UpdateElementDetails()
+                        SelectedMotionIndex = mSelectionHits(0).Index
+                        RaiseEvent OnSelection(mSelectionHits, 0)
+                        If mSelectionHits.Count > 1 AndAlso Cursor = Me.mSelectEtcCursor Then
+                            ShowQuickPick()
+                        End If
                     End If
                 End If
-            End If
-        End If
 
+                If ViewManipMode = ManipMode.SETROTATE Then
+                    mSelKeypoint3D = mDisplayLists3D.PointOnKeypoint3D
+                    If mSelectionHits.Count = 0 Then
+                        mSelKeypoint3D = mExtentCenter
+                    End If
+                    SetRotatePoint(mSelKeypoint3D)
+                    ViewManipMode = ManipMode.SELECTION
+                    Redraw(True)
+                End If
+
+                If ViewManipMode = ManipMode.MEASURE Then
+                    If mDisplayLists3D.IsOverKeypoint(mSelectionRect) Or mDisplayLists3D.PointOn Then
+                        mMeasurement.SetKeypoint(mDisplayLists3D)
+                    Else
+                        'If we are not over an element or a keypoint then reset
+                        SetView(ManipMode.SELECTION)
+                    End If
+                    Redraw(True)
+                    DrawGraphicsOverlaysAllViews(mDisplayLists2DSelectionIndices, -1)
+                End If
+
+            End If
+
+            If e.Button = MouseButtons.Middle Or ViewManipMode = ManipMode.ROTATE Then
+                mArcBall.StartRotation(e.X, e.Y)
+            End If
+            mViewModeWhenMouseWasDown = ViewManipMode
+        Catch ex As Exception
+            Debug.Assert(0 = 1, "MG_BasicViewer_MouseDown")
+        End Try
         ' Reset last.
         mLastPt.X = -1
         mLastPt.Y = -1
@@ -1246,12 +1828,40 @@ Public Class MG_BasicViewer
         mMouseDownPt.Y = e.Y
     End Sub
 
+    Public Sub SetAllRotatePointToCenter()
+        For Each viewer As MG_BasicViewer In MyNeighborhood
+            viewer.SetRotatePoint(mExtentCenter)
+        Next
+    End Sub
+
+    Private Sub SetRotatePoint(rotatePoint As Vector3)
+        Static lastRotatePoint As Vector3
+        'If lastRotatePoint = rotatePoint Then Return
+
+        If Single.IsNaN(rotatePoint.X) Then
+            rotatePoint = mExtentCenter
+        End If
+
+        mRotateAbout2DIndicator = Get2dFrom3D(rotatePoint)
+        mRotateAbout3D = rotatePoint
+
+        'move the translation from here to the arcball
+        SetViewMatrix3D() 'After new rotate point
+
+        'pan to compensate for the new rotation point
+        PanScene(mRotateAbout2DIndicator.X, mRotateAbout2DIndicator.Y)
+        'fix the 2d rotate point so it displays on screen ok
+        mRotateAbout2DIndicator.X -= mRotateAbout2DIndicator.X
+        mRotateAbout2DIndicator.Y -= mRotateAbout2DIndicator.Y
+        lastRotatePoint = rotatePoint
+    End Sub
+
     Private Shared mSelectionColor As Color
     Public Property SelectionColor() As Color
         Get
             Return mSelectionColor
         End Get
-        Set(ByVal value As Color)
+        Set(value As Color)
             mSelectionColor = value
         End Set
     End Property
@@ -1261,7 +1871,7 @@ Public Class MG_BasicViewer
         Get
             Return mLimitsColor
         End Get
-        Set(ByVal value As Color)
+        Set(value As Color)
             mLimitsColor = value
         End Set
     End Property
@@ -1273,26 +1883,50 @@ Public Class MG_BasicViewer
         End Get
     End Property
 
-    Private Sub MG_BasicViewer_MouseMove(ByVal sender As Object, ByVal e As System.Windows.Forms.MouseEventArgs) Handles Me.MouseMove
+
+    Private Sub TestForBorderRotateZone()
+        If Not mMouseDownAndMoving Then
+            If mCurrentCursorPos.Y > Height - ROTATE_BORDER Then 'near bottom X
+                DrawTextOverlay("Rotate about Y")
+            ElseIf mCurrentCursorPos.X < ROTATE_BORDER Then 'near left Z
+                DrawTextOverlay("Rotate about Z")
+            ElseIf mCurrentCursorPos.X > Width - ROTATE_BORDER Then 'near right Y
+                DrawTextOverlay("Rotate about X")
+            Else
+                DrawTextOverlay("               ")
+            End If
+        End If
+    End Sub
+
+    Private Sub MG_BasicViewer_MouseMove(sender As Object, e As MouseEventArgs) Handles Me.MouseMove
         Static Xold As Single
         Static Yold As Single
         If mTouchPointCount > 1 Then Return
         'Debug.Print("mousemove")
         Try
             Select Case e.Button
-                Case Windows.Forms.MouseButtons.Left
+                Case MouseButtons.Left
                     mMouseDownAndMoving = True
-                Case Windows.Forms.MouseButtons.Middle
+                Case MouseButtons.Middle
                     mMouseDownAndMoving = True
-                    ViewManipMode = ManipMode.ROTATE
-                Case Windows.Forms.MouseButtons.Left Or Windows.Forms.MouseButtons.Right
+                    If MB2Pan Then
+                        ViewManipMode = ManipMode.PAN
+                    Else
+                        ViewManipMode = ManipMode.ROTATE
+                    End If
+                Case MouseButtons.Left, MouseButtons.Right
                     mMouseDownAndMoving = True
-                    ViewManipMode = ManipMode.PAN
+                    If MB2Pan Then
+                        ViewManipMode = ManipMode.ROTATE
+                    Else
+                        ViewManipMode = ManipMode.PAN
+                    End If
                     ContextMenuStrip = Nothing
             End Select
 
             mCurrentCursorPos.X = e.X
             mCurrentCursorPos.Y = e.Y
+            'TestForBorderRotateZone()
             'Set the real coordinates of the mouse.
             'When the button whent down
             mMousePtF(0).X = mMouseDownPt.X
@@ -1305,7 +1939,6 @@ Public Class MG_BasicViewer
             mMousePtF(2).Y = Yold
             'Transform the points
             mMtxFeedback.TransformPoints(mMousePtF)
-
             Select Case ViewManipMode
                 Case ManipMode.FENCE
                     If (mMouseDownAndMoving) Then
@@ -1319,7 +1952,7 @@ Public Class MG_BasicViewer
                 Case ManipMode.PAN
                     If (mMouseDownAndMoving) Then
                         If mDynamicViewManipulation Then
-                            If Not My.Computer.Keyboard.ShiftKeyDown Then
+                            If mDrawLinesMilliseconds > maxDrawTime Then
                                 mArcQuality = FAST_QUALITY
                             End If
                             PanScene((mMousePtF(1).X - mMousePtF(2).X), mMousePtF(1).Y - mMousePtF(2).Y)
@@ -1333,21 +1966,24 @@ Public Class MG_BasicViewer
                     End If
                 Case ManipMode.ROTATE
                     If mMouseDownAndMoving Then
-                        If mMouseDownPt.Y > Height - 20 Then 'near bottom X
-                            Roll += Int(-Math.Sign(Xold - e.X)) * 3
-                        ElseIf mMouseDownPt.X < 20 Then 'near left Z
-                            Yaw += Int(-Math.Sign(Yold - e.Y)) * 3
-                        ElseIf mMouseDownPt.X > Width - 20 Then 'near right Y
-                            Pitch += Int(-Math.Sign(Yold - e.Y)) * 3
+                        If mMouseDownPt.Y > Height - ROTATE_BORDER Then 'near bottom X
+                            mArcBall.AddRotation(Maths.ToRadians(-Math.Sign(Xold - e.X)), New Vector3(0, 1, 0))
+                        ElseIf mMouseDownPt.X < ROTATE_BORDER Then 'near left Z
+                            mArcBall.AddRotation(Maths.ToRadians(-Math.Sign(Yold - e.Y)), New Vector3(0, 0, 1))
+                        ElseIf mMouseDownPt.X > Width - ROTATE_BORDER Then 'near right Y
+                            mArcBall.AddRotation(Maths.ToRadians(-Math.Sign(Yold - e.Y)), New Vector3(1, 0, 0))
                         Else
-                            Pitch += Int(-Math.Sign(Yold - e.Y)) * 3
-                            Roll += Int(-Math.Sign(Xold - e.X)) * 3
+                            mArcBall.UpdateRotation(e.X, e.Y)
+                            mArcBall.ApplyRotationMatrix()
                         End If
+
+                        SetViewMatrix3D()
                         If mDynamicViewManipulation Then
-                            If Not My.Computer.Keyboard.ShiftKeyDown Then
+                            If mDrawLinesMilliseconds > maxDrawTime Then
                                 mArcQuality = FAST_QUALITY
                             End If
                             CreateDisplayListsAndDraw()
+                            'DrawWinMouseLine(mMouseDownPt, e.Location)
                         Else
                             DrawWcsOnlyToBuffer()
                         End If
@@ -1356,73 +1992,161 @@ Public Class MG_BasicViewer
                     If (mMouseDownAndMoving) Then
                         Dim zFact As Single
                         If e.Y > mMouseDownPt.Y Then
-                            zFact = CSng(1 + ((e.Y - Yold) / Height))
+                            zFact = 1 + ((e.Y - Yold) / Me.Height)
                         Else
-                            zFact = 1 / CSng(1 + (Math.Abs(e.Y - Yold) / Height))
+                            zFact = 1 / (1 + (Math.Abs(e.Y - Yold) / Me.Height))
                         End If
                         ZoomSceneAtCenter(zFact)
                         If mDynamicViewManipulation Then
-                            If Not My.Computer.Keyboard.ShiftKeyDown Then
+                            If mDrawLinesMilliseconds > maxDrawTime Then
                                 mArcQuality = FAST_QUALITY
                             End If
                             CreateDisplayListsAndDraw()
                             'Me.mArcQuality = 1.0
                         End If
                     End If
-                Case ManipMode.SELECTION
+                Case ManipMode.SELECTION, ManipMode.SETROTATE, ManipMode.MEASURE
+                    SetSelectionRectangle()
 
-                    'Get a small selection viewport for selection.
-                    mSelectionRect.X = mMousePtF(1).X - mPixelF * mSelectionPixRect.Width / 2.0F
-                    mSelectionRect.Y = mMousePtF(1).Y - mPixelF * mSelectionPixRect.Height / 2.0F
-                    mSelectionRect.Width = mPixelF * mSelectionPixRect.Width
-                    mSelectionRect.Height = mPixelF * mSelectionPixRect.Height
+                    Dim hitIndex = GetSelectionHits(mSelectionRect)
+                    mDisplayLists3D.HitTest(hitIndex, mSelectionRect, mViewMatrix)
+                    ReportMouseLocationInMachineUnits()
+                    Select Case ViewManipMode
+                        Case ManipMode.SELECTION
+                            If SelectionChanged() Then
+                                DrawGraphicsOverlaysAllViews(mDisplayLists2DSelectionIndices, -1)
+                                DrawInfoOverlay()
+                                RaiseEvent OnHighlight(mSelectionHits, 0)
+                            End If
 
-                    GetSelectionHits(mSelectionRect)
-                    'Debug.Print(mDisplayLists.Count.ToString)
-                    If IsNewSelection() Then
-                        DrawAllSelectionOverlays(mSelectionHitIndices, -1)
-                        DrawOverlay()
-                        mLastSelectionHitIndices.Clear()
-                        mLastSelectionHitIndices.AddRange(mSelectionHitIndices)
-                    End If
+                        Case ManipMode.MEASURE
+                            If mDisplayLists3D.IsOverKeypoint(mSelectionRect) Then
+                                Me.Cursor = mMeasureKeypointCursor
+                            Else
+                                Me.Cursor = mMeasureCursor
+                            End If
+                            DrawGraphicsOverlaysAllViews(mDisplayLists2DSelectionIndices, -1)
+                        Case ManipMode.SETROTATE
+                            DrawAllKeyPointsOverlay()
+                    End Select
 
-                    RaiseEvent MouseLocation(mMousePtF(1).X, mMousePtF(1).Y)
+
             End Select
             ' Update last point.
             mLastPt = mCurrentCursorPos
             Xold = e.X
             Yold = e.Y
-        Catch
-            Debug.Assert(0 = 1, "MG_BasicViewer_MouseMove")
+        Catch 'ex As Exception
+            'Debug.Assert(0 = 1, "MG_BasicViewer_MouseMove")
         End Try
 
     End Sub
-
-    Private Function IsNewSelection() As Boolean
-        If mSelectionHitIndices.Count = mLastSelectionHitIndices.Count Then
-            For r As Integer = 0 To mLastSelectionHitIndices.Count - 1
-                If mLastSelectionHitIndices(r) <> mLastSelectionHitIndices(r) Then
-                    Return True
-                End If
-            Next
-            Return False
-        Else
-            Return True
+    Private Sub ReportMouseLocationInMachineUnits()
+        Dim x, y, z As Single
+        If mDisplayLists3D.CanDrawTarget Then
+            x = Single.Parse(AdjustForUnits(mDisplayLists3D.PointOnKeypoint3D.X / mMasterGfxAdjustScale, mDisplayLists3D.Item.MotionParent.Units))
+            y = Single.Parse(AdjustForUnits(mDisplayLists3D.PointOnKeypoint3D.Y / mMasterGfxAdjustScale, mDisplayLists3D.Item.MotionParent.Units))
+            z = Single.Parse(AdjustForUnits(mDisplayLists3D.PointOnKeypoint3D.Z / mMasterGfxAdjustScale, mDisplayLists3D.Item.MotionParent.Units))
         End If
+        RaiseEvent MouseLocation(x, y, z)
+    End Sub
+
+    Public Sub DrawKeypointIndicator(ByRef g As Graphics)
+        Dim invColor = Color.FromArgb(100, mInverseColor)
+        Dim d = mPixelF * 8
+        Dim p As Vector3
+        Dim kp(2) As Vector3
+
+        With mDisplayLists3D
+            kp(0) = Vector3.Transform(.Item.Keypoints(0), mViewMatrix)
+            kp(1) = Vector3.Transform(.Item.Keypoints(1), mViewMatrix)
+            kp(2) = Vector3.Transform(.Item.Keypoints(2), mViewMatrix)
+            If .HasKeypoints Then
+                Using kpPen As New Pen(mInverseColor)
+                    kpPen.Width = 0
+                    p = kp(0)
+                    g.DrawLine(kpPen, p.X - d, p.Y, p.X + d, p.Y) '--
+                    g.DrawLine(kpPen, p.X, p.Y - d, p.X, p.Y + d) '|
+
+                    p = kp(2)
+                    g.DrawLine(kpPen, p.X - d, p.Y, p.X + d, p.Y) '--
+                    g.DrawLine(kpPen, p.X, p.Y - d, p.X, p.Y + d) '|
+
+                    d /= 2
+                    p = kp(1)
+                    g.DrawLine(kpPen, p.X - d, p.Y, p.X + d, p.Y) '--
+                    g.DrawLine(kpPen, p.X, p.Y - d, p.X, p.Y + d) '|
+                End Using
+            End If
+        End With
+    End Sub
+
+    Private Sub SetSelectionRectangle()
+        mSelectionPixRect.X = CInt(mMousePtF(1).X - mSelectionPixRect.Width / 2.0F)
+        mSelectionPixRect.Y = CInt(mMousePtF(1).Y - mSelectionPixRect.Height / 2.0F)
+        'Get a small selection viewport for selection.
+        mSelectionRect.X = mMousePtF(1).X - mPixelF * mSelectionPixRect.Width / 2.0F
+        mSelectionRect.Y = mMousePtF(1).Y - mPixelF * mSelectionPixRect.Height / 2.0F
+        mSelectionRect.Width = mPixelF * mSelectionPixRect.Width
+        mSelectionRect.Height = mPixelF * mSelectionPixRect.Height
+
+    End Sub
+
+    Private Sub DrawArcCenterExtensions(g As Graphics, mr As clsMotionRecord)
+        mCurPen.Color = Color.FromArgb(64, Not BackColor.R, Not BackColor.G, Not BackColor.B)
+        mCurPen.DashStyle = DashStyle.Solid
+        mCurPen.Width = 0
+        mPoints2D.Clear()
+        FourthAxis = mr.NewRotaryPos
+        Dim pos As New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z)
+        Dim old As New Vector3(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z)
+        Dim center As New Vector3(mr.XYZcenter.X, mr.XYZcenter.Y, mr.XYZcenter.Z)
+
+        'in the case of a helix we need to average the axis positions
+        Select Case mr.ArcPlane
+            Case Motion.XY_PLN
+                center.Z = (old.Z + pos.Z) / 2
+            Case Motion.XZ_PLN
+                center.Y = (old.Y + pos.Y) / 2
+            Case Motion.YZ_PLN
+                center.X = (old.X + pos.X) / 2
+        End Select
+
+        Line3D(center.X, center.Y, center.Z, old.X, old.Y, old.Z)
+        Line3D(center.X, center.Y, center.Z, pos.X, pos.Y, pos.Z)
+        FourthAxis = 0
+        g.DrawLines(mCurPen, mPoints2D.ToArray)
+    End Sub
+
+    Private Function SelectionChanged() As Boolean
+        Static lastHitindex As Integer = -2
+        Dim thisHitindex As Integer
+        Dim retval As Boolean = True
+        If mDisplayLists2DSelectionIndices.Count > 0 Then
+            thisHitindex = mDisplayLists2DSelectionIndices.First
+        Else
+            thisHitindex = -1 'no selection
+        End If
+        retval = (thisHitindex <> lastHitindex)
+        lastHitindex = thisHitindex
+        Return retval
     End Function
 
-    Private Sub MG_BasicViewer_MouseUp(ByVal sender As Object, ByVal e As System.Windows.Forms.MouseEventArgs) Handles Me.MouseUp
+    Private Sub MG_BasicViewer_MouseUp(sender As Object, e As MouseEventArgs) Handles Me.MouseUp
         'Dim curCursor As Cursor = Me.Cursor
         Try
+            If mArcBall.IsRotating Then
+                mArcBall.stopRotation()
+            End If
             ' Set internal flag to know we no longer "have the mouse".
             mMouseDownAndMoving = False
-            mArcQuality = VARIABLE_QUALITY
+            Me.mArcQuality = VARIABLE_QUALITY
             ' Set flags to know that there is no "previous" line to reverse.
             mLastPt.X = -1
             mLastPt.Y = -1
 
             If Not mDynamicViewManipulation Then
-                Cursor = Cursors.WaitCursor
+                Me.Cursor = Cursors.WaitCursor
             End If
             Select Case ViewManipMode
                 Case ManipMode.PAN
@@ -1430,21 +2154,26 @@ Public Class MG_BasicViewer
                         PanScene((mMousePtF(1).X - mMousePtF(0).X), mMousePtF(1).Y - mMousePtF(0).Y)
                     End If
                     CreateDisplayListsAndDraw()
+                    SaveView()
+
                 Case ManipMode.ROTATE
-                    'If Not mDynamicViewManipulation Then
                     CreateDisplayListsAndDraw()
-                'End If
+                    SaveView()
+
                 Case ManipMode.FENCE
                     If mMouseDownPt.X <> e.X AndAlso mMouseDownPt.Y <> e.Y Then
                         WindowViewport(mMousePtF(0).X, mMousePtF(0).Y, mMousePtF(1).X, mMousePtF(1).Y)
                         CreateDisplayListsAndDraw()
+                        SaveView()
                     End If
                 Case ManipMode.ZOOM
-                    'If Not mDynamicViewManipulation Then
                     CreateDisplayListsAndDraw()
-                    'End If
+                    SaveView()
+
             End Select
-            ViewManipMode = mCurmanipMode
+            ViewManipMode = mViewModeWhenMouseWasDown
+
+
             'Me.Cursor = curCursor
         Catch
             Debug.Assert(0 = 1, "MG_BasicViewer_MouseUp")
@@ -1453,7 +2182,7 @@ Public Class MG_BasicViewer
     End Sub
 
     ' Convert and Normalize the points and draw the reversible frame.
-    Private Sub DrawWinMouseRect(ByVal p1 As Point, ByVal p2 As Point)
+    Private Sub DrawWinMouseRect(p1 As Point, p2 As Point)
         Dim rc As Rectangle
         ' Normalize the rectangle.
         If (p1.X < p2.X) Then
@@ -1478,13 +2207,13 @@ Public Class MG_BasicViewer
 
         'Draw the selection overlay.
         mCurPen.Color = mInverseColor
-        mCurPen.DashStyle = Drawing2D.DashStyle.Dot
-        Using g As Graphics = Graphics.FromHwnd(Handle)
+        mCurPen.DashStyle = DashStyle.Dot
+        Using g As Graphics = Graphics.FromHwnd(Me.Handle)
             g.DrawRectangle(mCurPen, rc)
         End Using
     End Sub
 
-    Private Sub DrawSelectionRectangle(ByVal rc As Rectangle)
+    Private Sub DrawSelectionRectangle(rc As Rectangle)
         'Draw the buffer
         If Not (mGfxBuff Is Nothing) Then
             mGfxBuff.Render()
@@ -1492,13 +2221,14 @@ Public Class MG_BasicViewer
 
         'Draw the selection overlay.
         mCurPen.Color = mInverseColor
-        mCurPen.DashStyle = Drawing2D.DashStyle.Solid
-        Using g As Graphics = Graphics.FromHwnd(Handle)
+        mCurPen.Width = 0
+        mCurPen.DashStyle = DashStyle.Solid
+        Using g As Graphics = Graphics.FromHwnd(Me.Handle)
             g.DrawRectangle(mCurPen, rc)
         End Using
     End Sub
 
-    Private Sub DrawWinMouseLine(ByVal p1 As Point, ByVal p2 As Point)
+    Private Sub DrawWinMouseLine(p1 As Point, p2 As Point)
         'Draw the buffer
         If Not (mGfxBuff Is Nothing) Then
             mGfxBuff.Render()
@@ -1506,8 +2236,8 @@ Public Class MG_BasicViewer
 
         'Draw the selection overlay.
         mCurPen.Color = mInverseColor
-        mCurPen.DashStyle = Drawing2D.DashStyle.Dash
-        Using g As Graphics = Graphics.FromHwnd(Handle)
+        mCurPen.DashStyle = DashStyle.Dash
+        Using g As Graphics = Graphics.FromHwnd(Me.Handle)
             g.DrawLine(mCurPen, p1, p2)
         End Using
     End Sub
@@ -1520,15 +2250,15 @@ Public Class MG_BasicViewer
     '    End If
     'End Sub
 
-    Public Sub ZoomSceneAtMouse(ByVal zoomFactor As Single)
+    Public Sub ZoomSceneAtMouse(zoomFactor As Single)
         Dim factor As Single = (1 - zoomFactor)
 
-        Dim leftScale As Single = CSng((mCurrentCursorPos.X / mClientRect.Width))
+        Dim leftScale As Single = (mCurrentCursorPos.X / mClientRect.Width)
         Dim rightScale As Single = 1.0F - leftScale
         leftScale = 1 - (leftScale * factor)
         rightScale = 1 - (rightScale * factor)
 
-        Dim topScale As Single = CSng((mCurrentCursorPos.Y / mClientRect.Height))
+        Dim topScale As Single = (mCurrentCursorPos.Y / mClientRect.Height)
         Dim bottomScale As Single = (1.0F - topScale)
         topScale = 1 - (topScale * factor)
         bottomScale = 1 - (bottomScale * factor)
@@ -1540,7 +2270,7 @@ Public Class MG_BasicViewer
     End Sub
 
 
-    Public Sub ZoomSceneAtCenter(ByVal zoomFactor As Single)
+    Public Sub ZoomSceneAtCenter(zoomFactor As Single)
         Dim newWid As Single = mViewRect.Width * zoomFactor
         Dim newHt As Single = mViewRect.Height * zoomFactor
 
@@ -1549,18 +2279,29 @@ Public Class MG_BasicViewer
         mViewRect.Width = newWid
         mViewRect.Height = newHt
         mLongside = Math.Max(mViewRect.Width, mViewRect.Height)
-        SetViewMatrix()
+        SetViewMatrix2D()
     End Sub
 
-    Public Sub PanScene(ByVal deltaX As Single, ByVal deltaY As Single)
+    Public Sub PanSceneTo(x As Single, y As Single)
+        Dim deltaX, deltaY As Single
+        deltaX = mViewportCenter.X - x
+        deltaY = mViewportCenter.Y - y
+        mViewRect.X -= deltaX
+        mViewRect.Y -= deltaY
+        mViewportCenter.X = x
+        mViewportCenter.Y = y
+        SetViewMatrix2D()
+    End Sub
+
+    Public Sub PanScene(deltaX As Single, deltaY As Single)
         mViewRect.X -= deltaX
         mViewRect.Y -= deltaY
         mViewportCenter.X -= deltaX
         mViewportCenter.Y -= deltaY
-        SetViewMatrix()
+        SetViewMatrix2D()
     End Sub
 
-    Public Sub WindowViewport(ByVal X1 As Single, ByVal Y1 As Single, ByVal X2 As Single, ByVal Y2 As Single)
+    Public Sub WindowViewport(X1 As Single, Y1 As Single, X2 As Single, Y2 As Single)
         Dim temp As Single
 
         If (X1 > X2) Then 'convert window from right to left
@@ -1578,7 +2319,7 @@ Public Class MG_BasicViewer
         If Math.Abs(X2 - X1) < 0.01 Then
             Return
         End If
-        If Math.Abs(Y2 - Y1) > 100000 Then
+        If Math.Abs(Y2 - Y1) > 1000000 Then
             Return
         End If
 
@@ -1594,24 +2335,33 @@ Public Class MG_BasicViewer
             mGfxBuff.Dispose()
             mGfxBuff = Nothing
         End If
+
+        'If mSelBuff IsNot Nothing Then
+        '    mSelBuff.Dispose()
+        '    mGfxBuff = Nothing
+        'End If
+
         ' Retrieves the BufferedGraphicsContext for the current application domain.
         mContext = BufferedGraphicsManager.Current
         ' Sets the maximum size for the primary graphics buffer
-        mContext.MaximumBuffer = New Size(Width + 1, Height + 1)
+        mContext.MaximumBuffer = New Size(Me.Width + 1, Me.Height + 1)
         ' Allocates a graphics buffer the size of this control
-        mGfxBuff = mContext.Allocate(CreateGraphics(), New Rectangle(0, 0, Width, Height))
+        mGfxBuff = mContext.Allocate(CreateGraphics(), New Rectangle(0, 0, Me.Width, Me.Height))
+        'mSelBuff = mContext.Allocate(CreateGraphics(), New Rectangle(0, 0, Me.Width, Me.Height))
         mGfx = mGfxBuff.Graphics
     End Sub
 
     ''' <summary>
     ''' Sets the matrix required to draw to the specified view
     ''' </summary>
-    Private Sub SetViewMatrix()
-        If Single.IsInfinity(mViewRect.Width) OrElse Single.IsInfinity(mViewRect.Height) Then Return
-        If mViewRect.Width = 0 OrElse mViewRect.Height = 0 Then Return
+    Private Function SetViewMatrix2D() As Boolean
+        If Single.IsInfinity(mViewRect.Width) OrElse Single.IsInfinity(mViewRect.Height) Then Return False
+        If mViewRect.Width = 0 OrElse mViewRect.Height = 0 Then Return False
 
         'The ratio between the actual size of the screen and the size of the graphics.
         mScaleToReal = (mClientRect.Width / mGfx.DpiX) / mViewRect.Width
+
+        'If mScaleToReal < 0.1 Then Return False
 
         mMtxDraw.Reset()
         mMtxDraw.Scale(mScaleToReal, mScaleToReal)
@@ -1619,16 +2369,21 @@ Public Class MG_BasicViewer
         mMtxDraw.Translate((mViewRect.Width / 2.0F), (mViewRect.Height / 2.0F))
         mMtxDraw.Scale(1, -1) 'Flip the Y
 
-        'The matrix for the triad is the same as the other geometry but without the scale
-        mMtxWCS.Reset()
-        mMtxWCS.Multiply(mMtxDraw)
-        mMtxWCS.Scale(1 / mScaleToReal * mAxisIndicatorScale, 1 / mScaleToReal * mAxisIndicatorScale)
+
+        'text
+        mMtxText.Reset()
+        mMtxText.Scale(mScaleToReal, mScaleToReal)
+        mMtxText.Translate(-mViewportCenter.X, mViewportCenter.Y)
+        mMtxText.Translate((mViewRect.Width / 2.0F), (mViewRect.Height / 2.0F))
+
 
         mPixelF = ((1 / mGfx.DpiX) / mScaleToReal)
         mBlipSize = (mPixelF * 3.0F)
-
+        mEndPointSize = (mPixelF * 2.0F)
+        mFeedrateFont = New Font(OverlayFont.FontFamily, mPixelF * 1000)
         SetFeedbackMatrix()
-    End Sub
+        Return True
+    End Function
 
     ''' <summary>
     ''' Adjusts the aspect of the view to match the window aspect
@@ -1656,8 +2411,9 @@ Public Class MG_BasicViewer
             mViewRect.X = mViewportCenter.X - (mViewRect.Width * 0.5F)
             mViewRect.Y = mViewportCenter.Y - (mViewRect.Height * 0.5F)
         End If
+        mArcBall.SetWidthHeight(mClientRect.Width, mClientRect.Height)
 
-        SetViewMatrix()
+        SetViewMatrix2D()
     End Sub
 
     Private Sub SetFeedbackMatrix()
@@ -1668,9 +2424,9 @@ Public Class MG_BasicViewer
     End Sub
 
     'I would like to take the graphics on the screen and print them to an area on the sheet.
-    Public Sub PrintScreen(ByVal e As System.Drawing.Printing.PrintPageEventArgs, ByVal region As Rectangle, ByVal scaleMode As Integer, ByVal units As MachineUnits, ByVal scale As Single)
-        Dim mtxWcs As New Drawing2D.Matrix
-        Dim mtxDraw As New Drawing2D.Matrix
+    Public Sub PrintScreen(e As Printing.PrintPageEventArgs, region As Rectangle, scaleMode As Integer, scale As Single)
+        Dim mtxWcs As New Matrix
+        Dim mtxDraw As New Matrix
         Dim g As Graphics = e.Graphics
         Dim printMarginRectF As RectangleF = Nothing
         Dim gUnits As GraphicsUnit
@@ -1693,7 +2449,7 @@ Public Class MG_BasicViewer
                 mScaleToReal = scale
         End Select
 
-        If units = MachineUnits.ENGLISH Then
+        If MachineUnits = MachineUnits.ENGLISH Then
             gUnits = GraphicsUnit.Inch
         Else
             gUnits = GraphicsUnit.Millimeter
@@ -1721,15 +2477,14 @@ Public Class MG_BasicViewer
 
         mPixelF = ((1 / g.DpiX) / mScaleToReal)
         mBlipSize = (mPixelF * 6.0F)
-        CreateDisplayLists()
 
         mCurPen.Width = 0
-        mCurPen.Color = Color.Black
-        mCurPen.DashStyle = Drawing2D.DashStyle.Solid
 
-        'SetInViewStatus(Me.mViewRect)
-        mArcQuality = FIXED_QUALITY
-        CreateDisplayLists()
+        mCurPen.Color = Color.Black
+        mCurPen.DashStyle = DashStyle.Solid
+
+        mArcQuality = FIXED_FINE_QUALITY
+        CreateDisplayListsFromMotionRecords()
         SetAllInVeiw()
         With g
             'Shift to the margin
@@ -1739,25 +2494,25 @@ Public Class MG_BasicViewer
             .DrawRectangle(mCurPen, printMarginRectF.X, printMarginRectF.Y, printMarginRectF.Width, printMarginRectF.Height)
 
             .ResetTransform()
-            .MultiplyTransform(mtxWcs)
+            .MultiplyTransform(mtxDraw)
             'Draw the axis indicator and axis lines
-            For Each p As clsDisplayList In mWcsDisplayLists
-
+            mWCSPen.Width = 0
+            For Each p As clsDisplayList2D In mWcsDisplayLists
                 If p.DashStyle <> DashStyle.Solid Then
                     mWCSPen.DashStyle = DashStyle.Dash
-                    'mWCSPen.DashPattern = mAxisDashStyle
+                    mWCSPen.DashPattern = mAxisDashStyle
                 Else
-                    mWCSPen.DashStyle = Drawing2D.DashStyle.Solid
+                    mWCSPen.DashStyle = DashStyle.Solid
                 End If
                 mWCSPen.Color = p.Color
-                .DrawLines(mWCSPen, p.Points)
+                .DrawLines(mWCSPen, p.Points2d)
             Next
-            .ResetTransform()
+            '.ResetTransform()
 
             'Now draw the toolpath
-            .MultiplyTransform(mtxDraw)
+            '.MultiplyTransform(mtxDraw)
             mCurPen.Width = 0
-            For Each p As clsDisplayList In mDisplayLists
+            For Each p As clsDisplayList2D In mDisplayLists2D
                 If Not p.InView Then
                     Continue For
                 End If
@@ -1768,7 +2523,7 @@ Public Class MG_BasicViewer
                 Else
                     mCurPen.Color = p.Color
                 End If
-                .DrawLines(mCurPen, p.Points)
+                .DrawLines(mCurPen, p.Points2d)
             Next
         End With
         mArcQuality = VARIABLE_QUALITY
@@ -1776,7 +2531,7 @@ Public Class MG_BasicViewer
         If clipRegion IsNot Nothing Then clipRegion.Dispose()
     End Sub
 
-    Public Sub CancelCreateDisplayList(ByVal value As Boolean)
+    Public Sub CancelCreateDisplayList(value As Boolean)
         If value Then
             mCancelSlowDisplayList = True
         Else
@@ -1784,42 +2539,52 @@ Public Class MG_BasicViewer
         End If
     End Sub
 
+    Private Function HasExtent() As Boolean
+        If mExtentX(0) = 0 And mExtentX(1) = 0 And mExtentY(0) = 0 And mExtentY(1) = 0 Then
+            Return False
+        End If
+
+        'If mExtentY(0) = 0 And mExtentY(1) = 0 Then
+        '    Return False
+        'End If
+        Return True
+    End Function
+
     Private Sub DrawListsToGraphics(ByRef g As Graphics)
         If mGfxBuff Is Nothing Then Return
-        Dim screenPoints() As PointF = Nothing
+        If Not HasExtent() Then
+            Return
+        End If
+
         Dim sw As New Stopwatch
         Dim limitDashStyle As Single() = New Single() {2.0F, 2.0F}
 
         Try
             mCurPen.Width = -1
             With g
-                .SmoothingMode = Drawing2D.SmoothingMode.HighSpeed
-                '.PixelOffsetMode = Drawing2D.PixelOffsetMode.Half
+                .SmoothingMode = SmoothingMode.HighSpeed
                 .PageUnit = GraphicsUnit.Inch
                 .ResetTransform()
-                .MultiplyTransform(mMtxWCS)
+                .MultiplyTransform(mMtxDraw)
+                mAxisDashStyle(0) = 0.15F / mScaleToReal
+                mAxisDashStyle(1) = 0.15F / mScaleToReal
+
+                If mViewManipMode = ManipMode.ROTATE Then
+                    DrawRotateTargetToGraphics(g, mRotateAbout2DIndicator)
+                End If
 
                 'Draw the axis indicator and axis lines
-                For Each p As clsDisplayList In mWcsDisplayLists
+                mWCSPen.Width = 0
+                For Each p As clsDisplayList2D In mWcsDisplayLists
                     If mCancelSlowDisplayList Then Exit For
                     mWCSPen.DashStyle = p.DashStyle
                     If p.DashStyle = DashStyle.Custom Then
                         mWCSPen.DashPattern = mAxisDashStyle
                     End If
                     mWCSPen.Color = p.Color
-
-                    If mAllowSlowDisplayList Then 'just draw
-                        .DrawLines(mWCSPen, p.Points)
-                    Else 'test for speed
-                        sw.Start()
-                        .DrawLines(mWCSPen, p.Points)
-                        If sw.ElapsedMilliseconds > 2000 Then
-                            RaiseEvent OnSlowDrawingAlert(Me)
-                        End If
-                    End If
+                    .DrawLines(mWCSPen, p.Points2d)
                 Next
 
-                .ResetTransform()
                 'Now draw the toolpath
                 'Adjust the dash style to suit the view scale
                 mRapidDashStyle(0) = 0.05F / mScaleToReal
@@ -1828,18 +2593,26 @@ Public Class MG_BasicViewer
                 limitDashStyle(0) = 0.1F / mScaleToReal
                 limitDashStyle(1) = 0.2F / mScaleToReal
 
-                .MultiplyTransform(mMtxDraw)
 
                 mCurPen.DashStyle = DashStyle.Solid
-                'mCurPen.DashPattern = limitDashStyle
-                If mLimitsDisplayLists.Count > 0 Then
-                    mCurPen.Color = LimitsColor
 
-                    For Each p As clsDisplayList In mLimitsDisplayLists
-                        .DrawLines(mCurPen, p.Points)
+                If mGridDisplayLists.Count > 0 Then
+                    mCurPen.Color = LimitsColor
+                    For Each p As clsDisplayList2D In mGridDisplayLists
+                        .DrawLines(mCurPen, p.Points2d)
                     Next
                 End If
-                For Each p As clsDisplayList In mDisplayLists
+
+                'mCurPen.DashStyle = DashStyle.Solid
+                mCurPen.DashPattern = limitDashStyle
+                If mLimitsDisplayLists.Count > 0 Then
+                    mCurPen.Color = LimitsColor
+                    For Each p As clsDisplayList2D In mLimitsDisplayLists
+                        .DrawLines(mCurPen, p.Points2d)
+                    Next
+                End If
+
+                For Each p As clsDisplayList2D In mDisplayLists2D
                     If mCancelSlowDisplayList Then Exit For
                     If Not p.InView Then
                         Continue For
@@ -1849,19 +2622,53 @@ Public Class MG_BasicViewer
                         mCurPen.DashPattern = mRapidDashStyle
                     End If
                     mCurPen.Color = p.Color
-                    LineFixUp(p.Points)
+
+                    If PerformLineFixup Then LineFixUp(p.Points2d)
 
                     If mAllowSlowDisplayList Then 'just draw
-                        .DrawLines(mCurPen, p.Points)
+                        .DrawLines(mCurPen, p.Points2d)
                     Else 'test for speed
                         sw.Start()
-                        .DrawLines(mCurPen, p.Points)
+                        .DrawLines(mCurPen, p.Points2d)
+                        mDrawLinesMilliseconds = sw.ElapsedMilliseconds
                         If sw.ElapsedMilliseconds > 2000 Then
                             RaiseEvent OnSlowDrawingAlert(Me)
                         End If
                     End If
+
+                    If DrawEndPoints Then
+                        DrawEndPoint(p.Points2d.Last)
+                    End If
+
+                Next
+                DrawMeasurementToGraphics(g)
+                For Each p As clsDisplayList2D In mToolCompDisplayLists
+                    .DrawLines(mCurPen, p.Points2d)
+                Next
+
+                For Each p As clsDisplayList2D In mToolDiaDisplayLists
+                    mCurPen.DashStyle = DashStyle.Dash
+                    mCurPen.DashPattern = mRapidDashStyle
+                    mCurPen.Color = p.Color
+                    .DrawLines(mCurPen, p.Points2d)
+                    '.FillClosedCurve(Brushes.Blue, p.Points2d)
+                Next
+
+                '.SmoothingMode = SmoothingMode.HighQuality
+                For Each p As clsDisplayList2D In mUserDisplayLists
+                    mCurPen.Color = p.Color
+                    If p.Points2d.Length = 1 Then
+                        DrawDot(p.Points2d.Last)
+                    Else
+                        mCurPen.DashStyle = p.DashStyle
+                        If p.DashStyle <> DashStyle.Solid Then
+                            mCurPen.DashPattern = mRapidDashStyle
+                        End If
+                        .DrawLines(mCurPen, p.Points2d)
+                    End If
                 Next
             End With
+
         Catch
             Debug.Assert(False, "DrawListsToGraphics")
         Finally
@@ -1870,13 +2677,218 @@ Public Class MG_BasicViewer
 
     End Sub
 
+    Private Sub DrawDirectionFlag(g As Graphics, p As clsDisplayList2D)
+        Dim rx As Double
+        Dim ry As Double
+        Dim sp As PointF
+        Dim ep As PointF
+        mCurPen.Width = -1
+        mCurPen.EndCap = Nothing
+        If p.Points2d.Length > 1 Then
+            mPoints2D.Clear()
+            Dim m = mAllMotionRecords(p.MotionIndex)
+
+
+            Dim s = New Vector2(p.Points2d.First.X, p.Points2d.First.Y)
+            Dim e = New Vector2(p.Points2d.Last.X, p.Points2d.Last.Y)
+            Dim midpoint As Vector2
+
+            If p.Points2d.Length = 2 Then
+                midpoint = (s + e) / 2
+            Else
+                midpoint.X = p.Points2d(p.Points2d.Length \ 2).X
+                midpoint.Y = p.Points2d(p.Points2d.Length \ 2).Y
+            End If
+
+            Dim v As Vector2 = (s - e)
+            If v.Length < 0.0001 Then Return
+
+            v.Normalise()
+            v = v * (mBlipSize * 4)
+
+            If Math.Abs((e - s).Length) < mBlipSize * 8 Then Return
+
+            Dim comp = mAllMotionRecords(p.MotionIndex).Comp
+            sp = New PointF(midpoint.X, midpoint.Y)
+
+            Debug.Print(mArcBall.ActiveMatrix.Up.Z.ToString)
+
+            If comp = CutterComp.OFF Or comp = CutterComp.RIGHT Then
+                Rotate2D(40.0, v, rx, ry)
+                ep = New PointF(midpoint.X + rx, midpoint.Y + ry)
+                g.DrawLine(mCurPen, sp, ep)
+            End If
+
+            If comp = CutterComp.OFF Or comp = CutterComp.LEFT Then
+                Rotate2D(-40.0, v, rx, ry)
+                ep = New PointF(midpoint.X + rx, midpoint.Y + ry)
+                g.DrawLine(mCurPen, sp, ep)
+            End If
+
+        End If
+    End Sub
+    Private Sub Rotate2D(a As Double, v As Vector2, ByRef rx As Double, ByRef ry As Double)
+        'x = Cos(Theta) * x - Sin(Theta) * y
+        'y = Sin(Theta) * x + Cos(Theta) * y 
+        Dim ang = a / 180 * Math.PI
+        Dim sina = Math.Sin(ang)
+        Dim cosa = Math.Cos(ang)
+        rx = cosa * v.X - sina * v.Y
+        ry = sina * v.X + cosa * v.Y
+    End Sub
+
+    Private Sub DrawMeasurementToGraphics(ByRef g As Graphics)
+        mMeasurement.Draw(g, mViewMatrix, BackColor, mFeedrateFont, mScaleToReal, mMasterGfxAdjustScale)
+    End Sub
+
+    Private Sub DrawDot(p As PointF)
+        Dim size = ((1 / mGfx.DpiX) / mScaleToReal) * 3
+        Dim w = New SizeF(size * 2, size * 2)
+        Dim r = New SizeF(size, size)
+        Dim rec As New RectangleF(p - r, w)
+        Using sb As New SolidBrush(mCurPen.Color)
+            mGfx.FillEllipse(sb, rec)
+        End Using
+    End Sub
+
+    Private Sub DrawEndPoint(p As PointF)
+
+        mCurPen.Width = ((1 / mGfx.DpiX) / mScaleToReal) * 4
+        Dim ep As PointF = p
+        Dim sp As PointF = p
+        ep.X += mBlipSize / 2
+        sp.X -= mBlipSize / 2
+        mGfx.DrawLine(mCurPen, sp, ep)
+        mCurPen.Width = -1
+    End Sub
+
+    Private Sub DrawRotateTargetToGraphics(g As Graphics, pt As PointF)
+        Try
+            Dim alpha = 100
+            Dim dia = mPixelF * 10
+            If ViewManipMode = ManipMode.SETROTATE Then
+                dia = mPixelF * 20
+                alpha = 200
+            End If
+            Dim clr = Color.FromArgb(alpha, mInverseColor)
+            Using myPen As New Pen(clr, 0)
+                myPen.Width = -1
+                Dim targetrect As New RectangleF(pt.X - dia / 2, pt.Y - dia / 2, dia, dia)
+                With g
+                    .DrawArc(myPen, targetrect, 0, 360)
+                    .DrawLine(myPen, pt.X - dia, pt.Y, pt.X + dia, pt.Y)
+                    .DrawLine(myPen, pt.X, pt.Y - dia, pt.X, pt.Y + dia)
+                End With
+            End Using
+        Catch
+            Debug.Assert(False, "DrawKeyPointTargetToGraphics")
+        End Try
+
+    End Sub
+
+    Private Sub DrawSpeedsFeedsToGraphics(ByRef g As Graphics, drawspeed As Boolean, drawcomp As Boolean)
+        If mGfxBuff Is Nothing Then Return
+        Dim screenPoints() As PointF = Nothing
+        Static lastFeed As Double
+        Static lastSpeed As Double
+        Static lastComp As CutterComp = CutterComp.OFF
+        Static lastMode As IncAbsMode = IncAbsMode.ABS
+        Dim xOffset As Single = 0
+        Try
+            mCurPen.Width = -1
+            With g
+                g.TextRenderingHint = Drawing.Text.TextRenderingHint.ClearTypeGridFit
+                .PageUnit = GraphicsUnit.Inch
+                .ResetTransform()
+                .MultiplyTransform(mMtxText)
+
+                mCurPen.DashStyle = DashStyle.Solid
+                'mCurPen.DashPattern = limitDashStyle
+                For Each p As clsDisplayList2D In mDisplayLists2D
+                    mCurPen.DashStyle = DashStyle.Solid
+                    mCurPen.Color = p.Color
+                    Dim motionRec As clsMotionRecord = mAllMotionRecords(p.MotionIndex)
+                    If drawspeed Then
+                        If motionRec.FeedRate <> lastFeed AndAlso motionRec.FeedRate <> 0 Then
+
+                            Dim str As String = "F" & motionRec.FeedRate
+                            'Draw the overlay.
+                            Dim fpt As New PointF(p.Points2d(p.Points2d.Count \ 2).X, -p.Points2d(p.Points2d.Count \ 2).Y)
+                            If p.Points2d.Count = 2 Then
+                                fpt.X = (p.Points2d(0).X + p.Points2d(1).X) / 2
+                                fpt.Y = -(p.Points2d(0).Y + p.Points2d(1).Y) / 2
+                            End If
+
+                            Using textBrush As New SolidBrush(mCurPen.Color)
+                                g.DrawString(str, mFeedrateFont, textBrush, fpt)
+                            End Using
+                            xOffset = g.MeasureString(str, mFeedrateFont).Width
+                        End If
+                    End If
+                    'speed
+                    If drawspeed AndAlso motionRec.Speed <> lastSpeed AndAlso motionRec.Speed <> 0 Then
+                        Dim str As String = "S" & motionRec.Speed
+                        'Draw the overlay.
+                        Dim fpt As New PointF(p.Points2d(p.Points2d.Count \ 2).X, -p.Points2d(p.Points2d.Count \ 2).Y)
+                        If p.Points2d.Count = 2 Then
+                            fpt.X = ((p.Points2d(0).X + p.Points2d(1).X) / 2)
+                            fpt.Y = (-(p.Points2d(0).Y + p.Points2d(1).Y) / 2)
+                        End If
+                        fpt.X += xOffset
+                        Using textBrush As New SolidBrush(mCurPen.Color)
+                            g.DrawString(str, mFeedrateFont, textBrush, fpt)
+                        End Using
+                        xOffset += g.MeasureString(str, mFeedrateFont).Width
+
+                    End If
+
+                    If motionRec.MotionType <> Motion.RAPID Then
+                        lastFeed = motionRec.FeedRate
+                    End If
+                    lastSpeed = motionRec.Speed
+
+                    If drawcomp AndAlso motionRec.Comp <> lastComp Then
+                        Dim arrowSt As New PointF(p.Points2d(p.Points2d.Count \ 2).X, -p.Points2d(p.Points2d.Count \ 2).Y)
+                        If p.Points2d.Count = 2 Then
+                            arrowSt.X = ((p.Points2d(0).X + p.Points2d(1).X) / 2)
+                            arrowSt.Y = (-(p.Points2d(0).Y + p.Points2d(1).Y) / 2)
+                        End If
+
+                        Select Case motionRec.Comp
+                            Case CutterComp.LEFT
+                                Using textBrush As New SolidBrush(mCurPen.Color)
+                                    g.DrawString(" L", mFeedrateFont, textBrush, arrowSt)
+                                End Using
+
+                            Case CutterComp.RIGHT
+                                Using textBrush As New SolidBrush(mCurPen.Color)
+                                    g.DrawString(" R", mFeedrateFont, textBrush, arrowSt)
+                                End Using
+                            Case CutterComp.OFF
+                                Using textBrush As New SolidBrush(mCurPen.Color)
+                                    g.DrawString(" O", mFeedrateFont, textBrush, arrowSt)
+                                End Using
+
+                        End Select
+                    End If
+                    lastComp = motionRec.Comp
+                    xOffset = 0
+                Next
+            End With
+        Catch
+            Debug.Assert(False, "DrawListsToGraphics")
+        End Try
+
+    End Sub
+
+
     'I hate this!
     'A problem exists where if the line is extended beyond the screen and it is at a sight angle
     'then it will not display completly.
     'This seems to fix the problem without too much extra processing.
     Private Sub LineFixUp(ByRef pts() As PointF)
         If pts.Length = 2 Then
-            If Math.Sqrt(((pts(0).X - pts(1).X) ^ 2) + ((pts(0).Y - pts(1).Y) ^ 2)) > mViewRect.Width Then
+            If Math.Sqrt(((pts(0).X - pts(1).X) ^ 2) + ((pts(0).Y - pts(1).Y) ^ 2)) > Me.mViewRect.Width Then
 
                 If Math.Abs(pts(0).X - pts(1).X) < 0.001 Then
                     pts(0).X = (pts(0).X + pts(1).X) / 2
@@ -1895,26 +2907,42 @@ Public Class MG_BasicViewer
 
     Private Sub DrawWcsOnlyToBuffer()
         If mGfxBuff Is Nothing Then Return
+        If Not HasExtent() Then
+            Return
+        End If
+
         CreateWcs()
         With mGfx
             .Clear(BackColor)
             .PageUnit = GraphicsUnit.Inch
             .ResetTransform()
-            .MultiplyTransform(mMtxWCS)
+            .MultiplyTransform(mMtxDraw)
             'Draw the axis indicator and axis lines
-            For Each p As clsDisplayList In mWcsDisplayLists
+            mWCSPen.Width = 0
+            For Each p As clsDisplayList2D In mWcsDisplayLists
                 mWCSPen.DashStyle = p.DashStyle
                 mWCSPen.DashPattern = mAxisDashStyle
                 mWCSPen.Color = p.Color
-                .DrawLines(mWCSPen, p.Points)
+                .DrawLines(mWCSPen, p.Points2d)
             Next
         End With
         mGfxBuff.Render()
     End Sub
 
-    Public Sub DrawOverlay()
-        If mDisplayLists.Count = 0 Then Return
-        If mSelectionHitIndices.Count = 0 Then Return
+    Private Function AdjustForUnits(val As Single, mrUnits As MachineUnits) As String
+        Select Case mrUnits
+            Case MachineUnits.ENGLISH
+                Return val.ToString(NUMBERFORMAT, Globalization.NumberFormatInfo.InvariantInfo)
+            Case Else
+                val *= 25.4F
+                Return val.ToString(NUMBERFORMAT, Globalization.NumberFormatInfo.InvariantInfo)
+        End Select
+    End Function
+
+
+    Public Sub DrawInfoOverlay()
+        If mDrawOverlayText = False OrElse mDisplayLists2D.Count = 0 Then Return
+        If mDisplayLists2DSelectionIndices.Count = 0 OrElse mSelectionHits.Count = 0 Then Return
         mLastSelectedMotionRecord = mSelectionHits(0)
 
         Dim fontHeight As Integer = OverlayFont.Height
@@ -1923,46 +2951,61 @@ Public Class MG_BasicViewer
         Dim str As String
         'Draw the overlay.
         Using textBrush As New SolidBrush(Color.FromArgb(180, Not BackColor.R, Not BackColor.G, Not BackColor.B))
-            Using g As Graphics = Graphics.FromHwnd(Handle)
+            Using g As Graphics = Graphics.FromHwnd(Me.Handle)
                 mp.X = 2 : mp.Y = 2
                 textBrush.Color = Color.FromArgb(180, Not BackColor.R, Not BackColor.G, Not BackColor.B)
-                g.TextRenderingHint = Drawing.Text.TextRenderingHint.AntiAliasGridFit
-                str = "T" & mr.Tool.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+                g.TextRenderingHint = Drawing.Text.TextRenderingHint.ClearTypeGridFit
+
+                str = "T" & mr.Tool.ToString(NUMBERFORMAT, Globalization.NumberFormatInfo.InvariantInfo)
                 g.DrawString(str, OverlayFont, textBrush, mp)
                 mp.Offset(0, fontHeight + 2)
                 g.DrawString(mr.Comp.ToString, OverlayFont, textBrush, mp)
                 mp.Offset(0, fontHeight + 2)
-                str = "S" & mr.Speed.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+
+                str = "S" & mr.Speed.ToString(NUMBERFORMAT, Globalization.NumberFormatInfo.InvariantInfo)
                 g.DrawString(str, OverlayFont, textBrush, mp)
                 mp.Offset(0, fontHeight + 2)
-                str = "F" & mr.FeedRate.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+
+                str = "F" & mr.FeedRate
+                g.DrawString(str, OverlayFont, textBrush, mp)
+                mp.Offset(0, fontHeight + 2)
+                g.DrawString(mr.MotionMode.ToString, OverlayFont, textBrush, mp)
+
+                mp.Offset(0, fontHeight + 2)
+                str = IIf(mr.Units = MachineUnits.ENGLISH, "IN", "MM")
                 g.DrawString(str, OverlayFont, textBrush, mp)
 
+                mp.Offset(0, fontHeight + 2)
+                g.DrawString(mr.OffsetString, OverlayFont, textBrush, mp)
+
                 If DrawExtraOverlayInfo Then
+                    CalculateMotionRecordLength(mr)
+
                     Select Case mr.MotionType
                         Case Motion.CCARC, Motion.CWARC
                             'Type
                             'Center,Rad
                             'Start,End
                             'sAng,eAng
-                            mp.Y = ClientRectangle.Height - ((2 + fontHeight) * 5)
+                            mp.Y = Me.ClientRectangle.Height - ((2 + fontHeight) * 5)
                             str = mr.MotionType.ToString
-                            str += " R" & mr.Rad.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+                            str += " R" & AdjustForUnits(mr.Rad, mr.Units)
+                            str += " " & mr.MotionMode.ToString
                             g.DrawString(str, OverlayFont, textBrush, mp)
                             mp.Offset(0, fontHeight + 2)
-                            str = "CTR X" & mr.Xcentr.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " Y" & mr.Ycentr.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " Z" & mr.Zcentr.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+                            str = "CTR X" & AdjustForUnits(mr.XYZcenter.X, mr.Units)
+                            str += " Y" & AdjustForUnits(mr.XYZcenter.Y, mr.Units)
+                            str += " Z" & AdjustForUnits(mr.XYZcenter.Z, mr.Units)
                             g.DrawString(str, OverlayFont, textBrush, mp)
 
 
                             mp.Offset(0, fontHeight + 2)
-                            str = "X" & mr.Xold.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " > X" & mr.Xpos.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " Y" & mr.Yold.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " > Y" & mr.Ypos.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " Z" & mr.Zold.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " > Z" & mr.Zpos.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+                            str = "X" & AdjustForUnits(mr.XYZold.X, mr.Units)
+                            str += " > X" & AdjustForUnits(mr.XYZpos.X, mr.Units)
+                            str += " Y" & AdjustForUnits(mr.XYZold.Y, mr.Units)
+                            str += " > Y" & AdjustForUnits(mr.XYZpos.Y, mr.Units)
+                            str += " Z" & AdjustForUnits(mr.XYZold.Z, mr.Units)
+                            str += " > Z" & AdjustForUnits(mr.XYZpos.Z, mr.Units)
                             g.DrawString(str, OverlayFont, textBrush, mp)
 
                             mp.Offset(0, fontHeight + 2)
@@ -1970,106 +3013,95 @@ Public Class MG_BasicViewer
                             str += " > " & AngleToDegrees(mr.Eang)
                             g.DrawString(str, OverlayFont, textBrush, mp)
                         Case Motion.LINE, Motion.RAPID, Motion.HOLE_I, Motion.HOLE_R
-                            mp.Y = ClientRectangle.Height - 2 - (fontHeight * 3)
-                            g.DrawString(mr.MotionType.ToString, OverlayFont, textBrush, mp)
+                            mp.Y = Me.ClientRectangle.Height - 2 - (fontHeight * 3)
+                            g.DrawString(mr.MotionType.ToString & " " & mr.MotionMode.ToString & " " & AdjustForUnits(mr.CuttingLength, mr.Units), OverlayFont, textBrush, mp)
 
                             mp.Offset(0, fontHeight + 2)
-                            str = "X" & mr.Xold.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " > X" & mr.Xpos.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " Y" & mr.Yold.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " > Y" & mr.Ypos.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " Z" & mr.Zold.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
-                            str += " > Z" & mr.Zpos.ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+                            str = "X" & AdjustForUnits(mr.XYZold.X, mr.Units)
+                            str += " > X" & AdjustForUnits(mr.XYZpos.X, mr.Units)
+                            str += " Y" & AdjustForUnits(mr.XYZold.Y, mr.Units)
+                            str += " > Y" & AdjustForUnits(mr.XYZpos.Y, mr.Units)
+                            str += " Z" & AdjustForUnits(mr.XYZold.Z, mr.Units)
+                            str += " > Z" & AdjustForUnits(mr.XYZpos.Z, mr.Units)
                             g.DrawString(str, OverlayFont, textBrush, mp)
 
                     End Select
                 End If
 
-                mp.Y = ClientRectangle.Height - 2 - fontHeight
+                mp.Y = Me.ClientRectangle.Height - 2 - fontHeight
                 g.DrawString(mr.Codestring, OverlayFont, textBrush, mp)
 
             End Using
         End Using
     End Sub
 
-    Private Function AngleToDegrees(ByVal angle As Single) As String
-        Return (angle * (180.0 / Math.PI)).ToString(NUMBERFORMAT, System.Globalization.NumberFormatInfo.InvariantInfo)
+    Private Function AngleToDegrees(angle As Single) As String
+        Return (angle * (180.0 / Math.PI)).ToString(NUMBERFORMAT, Globalization.NumberFormatInfo.InvariantInfo)
     End Function
 
-    Public Sub DrawTextOverlay(ByVal text As String)
+    Public Sub DrawTextOverlay(text As String)
         Dim fontHeight As Integer = OverlayFont.Height
         'Draw the overlay.
         Using textBrush As New SolidBrush(Color.FromArgb(180, Not BackColor.R, Not BackColor.G, Not BackColor.B))
-            Using g As Graphics = Graphics.FromHwnd(Handle)
-                g.TextRenderingHint = Drawing.Text.TextRenderingHint.AntiAliasGridFit
-                g.DrawString(text, OverlayFont, textBrush, New Point(2, ClientRectangle.Height - 2 - fontHeight))
+            Using g As Graphics = Graphics.FromHwnd(Me.Handle)
+                g.TextRenderingHint = Drawing.Text.TextRenderingHint.ClearTypeGridFit
+                g.DrawString(text, OverlayFont, textBrush, New Point(2, Me.ClientRectangle.Height - 2 - fontHeight))
             End Using
         End Using
     End Sub
 
-    Private mWatermarkFont As New Font(System.Drawing.FontFamily.GenericMonospace, 46)
-    Public Sub DrawWatermark(ByVal text As String)
-        Dim mWatermarkFont As New Font(System.Drawing.FontFamily.GenericMonospace, 46)
+    Private mWatermarkFont As New Font(FontFamily.GenericMonospace, 46)
+    Public Sub DrawWatermark(text As String)
+        Dim mWatermarkFont As New Font(FontFamily.GenericMonospace, 46)
         Dim fontHeight As Integer = mWatermarkFont.Height
         'Draw the overlay.
         Using textBrush As New SolidBrush(Color.FromArgb(50, Not BackColor.R, Not BackColor.G, Not BackColor.B))
             Using g As Graphics = Graphics.FromHwnd(Handle)
                 g.TextRenderingHint = Drawing.Text.TextRenderingHint.AntiAliasGridFit
-                Dim mp As New Point(2, ClientRectangle.Height - 2 - fontHeight)
+                Dim mp As New Point(2, Me.ClientRectangle.Height - 2 - fontHeight)
                 g.DrawString(text, mWatermarkFont, textBrush, mp)
             End Using
         End Using
     End Sub
-
+    Public Sub DrawGridToGraphics()
+        Dim mWatermarkFont As New Font(FontFamily.GenericMonospace, 46)
+        Dim fontHeight As Integer = mWatermarkFont.Height
+        'Draw the overlay.
+        Using textBrush As New SolidBrush(Color.FromArgb(50, Not BackColor.R, Not BackColor.G, Not BackColor.B))
+            Using g As Graphics = Graphics.FromHwnd(Handle)
+                g.TextRenderingHint = Drawing.Text.TextRenderingHint.AntiAliasGridFit
+                Dim mp As New Point(2, Me.ClientRectangle.Height - 2 - fontHeight)
+                g.DrawString(Text, mWatermarkFont, textBrush, mp)
+            End Using
+        End Using
+    End Sub
     Public Function MotionBlockFromSelection() As clsMotionRecord
-        Return MotionRecords(mDisplayLists(mSelectionHitIndices(0)).MotionIndex)
+        Return AllMotionRecords(mDisplayLists2D(mDisplayLists2DSelectionIndices(0)).MotionIndex)
     End Function
 
-    Private Sub DrawSelectionOverlay(ByVal Indices As List(Of Integer), ByVal selIndex As Integer)
-        Dim p As clsDisplayList
-        If mDisplayLists.Count = 0 Then Return
+    Private Sub DrawKeyPointsOverlay()
         Try
 
             'Draw the entire buffer first
             If Not (mGfxBuff Is Nothing) Then
                 mGfxBuff.Render()
             End If
-            'Draw the selection overlay.
-            mCurPen.Width = ((1 / mGfx.DpiX) / mScaleToReal) * 4
-            Using g As Graphics = Graphics.FromHwnd(Handle)
+            Using g As Graphics = Graphics.FromHwnd(Me.Handle)
                 With g
-                    .SmoothingMode = Drawing2D.SmoothingMode.HighQuality
-                    '.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality
                     .PageUnit = GraphicsUnit.Inch
                     .ResetTransform()
                     .MultiplyTransform(mMtxDraw)
-                    If selIndex > -1 Then
-                        p = mDisplayLists(Indices(selIndex))
-                        If SelectionColor.IsEmpty Then
-                            mCurPen.Color = p.Color
-                        Else
-                            mCurPen.Color = SelectionColor
-                        End If
-                        mCurPen.EndCap = Drawing2D.LineCap.ArrowAnchor
-                        mCurPen.DashStyle = p.DashStyle
-                        .DrawLines(mCurPen, p.Points)
-                    Else
-                        Dim ct As Integer = mDisplayLists.Count
-                        For Each i As Integer In Indices
-                            If i >= ct Then
-                                Continue For
-                            End If
-                            p = mDisplayLists(i)
-                            If SelectionColor.IsEmpty Then
-                                mCurPen.Color = p.Color
-                            Else
-                                mCurPen.Color = SelectionColor
-                            End If
-                            mCurPen.EndCap = Drawing2D.LineCap.ArrowAnchor
-                            mCurPen.DashStyle = p.DashStyle
-                            .DrawLines(mCurPen, p.Points)
-                        Next
+                    .SmoothingMode = SmoothingMode.HighQuality
+
+                    If ViewManipMode = ManipMode.SETROTATE And mDisplayLists3D.CanDrawTarget Then
+                        DrawRotateTargetToGraphics(g, Get2dFrom3D(mDisplayLists3D.PointOnKeypoint3D))
                     End If
+
+                    If (ViewManipMode = ManipMode.MEASURE) Then
+                        DrawKeypointIndicator(g)
+                        DrawMeasurementToGraphics(g)
+                    End If
+
                 End With
             End Using
             mCurPen.EndCap = Nothing
@@ -2079,7 +3111,79 @@ Public Class MG_BasicViewer
 
     End Sub
 
-    Private Sub MG_BasicViewer_Paint(ByVal sender As Object, ByVal e As System.Windows.Forms.PaintEventArgs) Handles Me.Paint
+    Private Sub DrawGraphicsOverlay(Indices As List(Of Integer), selIndex As Integer)
+        Dim p As clsDisplayList2D
+        If Not Visible Then Return
+        If mDisplayLists2D.Count = 0 Then Return
+        Try
+
+            'Draw the entire buffer first
+            If Not (mGfxBuff Is Nothing) Then
+                mGfxBuff.Render()
+            End If
+            Using g As Graphics = Graphics.FromHwnd(Me.Handle)
+                With g
+                    '.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality
+                    .PageUnit = GraphicsUnit.Inch
+                    .ResetTransform()
+                    .MultiplyTransform(mMtxDraw)
+                    .SmoothingMode = SmoothingMode.HighQuality
+
+                    If mSelectionHits.Count = 1 Then
+                        If (mSelectionHits(0).MotionType = Motion.CCARC Or mSelectionHits(0).MotionType = Motion.CWARC) Then
+                            DrawArcCenterExtensions(g, mSelectionHits(0))
+                        End If
+
+                    End If
+
+                    'Draw the selection overlay.
+                    mCurPen.Width = ((1 / mGfx.DpiX) / mScaleToReal) * 4
+                    If selIndex > -1 Then
+                        p = mDisplayLists2D(Indices(selIndex))
+                        If SelectionColor.IsEmpty Then
+                            mCurPen.Color = p.Color
+                        Else
+                            mCurPen.Color = SelectionColor
+                        End If
+                        mCurPen.EndCap = LineCap.ArrowAnchor
+                        mCurPen.DashStyle = p.DashStyle
+                        .DrawLines(mCurPen, p.Points2d)
+                    Else
+                        Dim ct As Integer = mDisplayLists2D.Count
+                        For Each i As Integer In Indices
+                            If i >= ct Then
+                                Continue For
+                            End If
+
+                            p = mDisplayLists2D(i)
+
+                            If SelectionColor.IsEmpty Then
+                                mCurPen.Color = p.Color
+                            Else
+                                mCurPen.Color = SelectionColor
+                            End If
+
+                            mCurPen.EndCap = LineCap.ArrowAnchor
+                            mCurPen.DashStyle = p.DashStyle
+                            .DrawLines(mCurPen, p.Points2d)
+
+                        Next
+                    End If
+                    If (ViewManipMode = ManipMode.MEASURE) Then
+                        DrawKeypointIndicator(g)
+                        DrawMeasurementToGraphics(g)
+                    End If
+
+                End With
+            End Using
+            mCurPen.EndCap = Nothing
+        Catch ex As Exception
+            Debug.Assert(1 = 0, "DrawSelectionOverlay")
+        End Try
+
+    End Sub
+
+    Private Sub MG_BasicViewer_Paint(sender As Object, e As PaintEventArgs) Handles Me.Paint
         Try
             If Not mGfxBuff Is Nothing Then
                 If mDrawOnPaint Then
@@ -2094,41 +3198,59 @@ Public Class MG_BasicViewer
     End Sub
 
     Public Sub Init()
-        If Not Visible Then Return
-        Using ms As New System.IO.MemoryStream(My.Resources.SelectOne)
+        If Not Me.Visible Then Return
+
+        SetDrawDelegates(enDrawMethod.DRAW)
+
+        Using ms As New IO.MemoryStream(My.Resources.SelectOne)
             mSelectCursor = New Cursor(ms)
         End Using
-        Using ms As New System.IO.MemoryStream(My.Resources.SelectEtc)
+        Using ms As New IO.MemoryStream(My.Resources.SelectEtc)
             mSelectEtcCursor = New Cursor(ms)
+        End Using
+        Using ms As New IO.MemoryStream(My.Resources.SetRotate)
+            mSetRotateCursor = New Cursor(ms)
+        End Using
+        Using ms As New IO.MemoryStream(My.Resources.Measure)
+            mMeasureCursor = New Cursor(ms)
+        End Using
+        Using ms As New IO.MemoryStream(My.Resources.MeasureKeypoint)
+            mMeasureKeypointCursor = New Cursor(ms)
         End Using
 
         mCancelSlowDisplayList = False
         mAllowSlowDisplayList = False
 
+        'Window is just warming up so get out because this causes a slow condition
+        If ClientRectangle.Height < 10 Or ClientRectangle.Width < 10 Then Return
+
+        mExtentLongest = 100
+        'If mWcsDisplayLists.Count = 0 Then
+        'CreateWcs()
+        'End If
         SetBufferContext()
         mClientRect = ClientRectangle
         mSelectionHits.Clear()
         ArcSegmentCount = 16
-        If mDisplayLists.Count = 0 Then
+        If Me.mDisplayLists2D.Count = 0 Then
             WindowViewport(-2.0F, -2.0F, 2.0F, 2.0F)
-            SetViewMatrix()
-            DrawWcsOnlyToBuffer()
+            If SetViewMatrix2D() Then
+                DrawWcsOnlyToBuffer()
+            End If
         Else
-#If DEBUG Then
-            FindExtents()
-#End If
-            DrawDisplayLists()
+            CreateDisplayListsAndDraw()
         End If
+        isInitialized = True
     End Sub
 
-    Private Sub MG_BasicViewer_SizeChanged(ByVal sender As Object, ByVal e As System.EventArgs) Handles Me.SizeChanged
-        Init()
+    Private Sub MG_BasicViewer_SizeChanged(sender As Object, e As EventArgs) Handles Me.SizeChanged
+        If Not Me.Disposing Then Init()
     End Sub
 
-    Private Function ArcLength(ByVal Xe As Single, ByVal Xs As Single,
-                    ByVal Ye As Single, ByVal Ys As Single,
-                    ByVal Ze As Single, ByVal Zs As Single,
-                    ByVal r As Single, ByRef Startang As Single, ByRef Endang As Single, ByRef Wplane As Integer) As Single
+    Private Function ArcLength(Xe As Single, Xs As Single,
+Ye As Single, Ys As Single,
+Ze As Single, Zs As Single,
+r As Single, ByRef Startang As Single, ByRef Endang As Single, ByRef Wplane As Integer) As Single
 
         Dim sngTotalAngle As Single = Math.Abs(Startang - Endang)
 
@@ -2149,14 +3271,23 @@ Public Class MG_BasicViewer
         totalCutTime = 0
         totalRapidTime = 0
 
-        If MotionRecords.Count = 0 Then Return
-        If mRangeEnd > MotionRecords.Count Then
-            mRangeEnd = MotionRecords.Count - 1
+        If AllMotionRecords.Count = 0 Then Return
+        If mRangeEnd > AllMotionRecords.Count Then
+            mRangeEnd = AllMotionRecords.Count - 1
         End If
+
+        Dim isCutting = Function(mr As clsMotionRecord)
+                            Return mr.MotionType = Motion.LINE OrElse
+                                    mr.MotionType = Motion.CCARC OrElse
+                                    mr.MotionType = Motion.CWARC OrElse
+                                    mr.MotionType = Motion.HOLE_I OrElse
+                                    mr.MotionType = Motion.HOLE_R
+                        End Function
+
         ArcSegmentCount = 36
-        For mGfxIndex = mRangeStart To mRangeEnd
-            mCurMotionRec = MotionRecords(mGfxIndex)
-            If mCurMotionRec.MotionType <> Motion.RAPID AndAlso mCurMotionRec.FeedRate = 0 Then
+        For mMotRecIdx = mRangeStart To mRangeEnd
+            mCurMotionRec = AllMotionRecords(mMotRecIdx)
+            If isCutting(mCurMotionRec) AndAlso mCurMotionRec.FeedRate = 0 Then
                 zeroFeedDetected = True
             End If
             CalculateMotionRecordLengthAndTime(totalCutTime, totalRapidTime)
@@ -2169,7 +3300,8 @@ Public Class MG_BasicViewer
         Dim rapidTime As Double = 0
         Dim feedrate As Single = 0
         Dim rapidrate As Single = 0
-        CalculateMotionRecordLength()
+
+        CalculateMotionRecordLength(mCurMotionRec)
 
         If mCurMotionRec.Speed = 0 Then
             Return
@@ -2185,7 +3317,7 @@ Public Class MG_BasicViewer
 
         With mCurMotionRec
             Select Case MachineType
-                Case MacGen.MachineType.MILL
+                Case MachineType.MILL
                     Select Case .FeedMode
                         Case FeedMode.UNIT_PER_MIN 'Default for mill
                             cutTime = (.CuttingLength / feedrate)
@@ -2196,7 +3328,7 @@ Public Class MG_BasicViewer
                     totalCutTime += cutTime
                     totalRapidTime += rapidTime
                     .MotionTime = cutTime + rapidTime
-                Case MacGen.MachineType.LATHEDIA, MacGen.MachineType.LATHERAD
+                Case MachineType.LATHEDIA, MachineType.LATHERAD
 
                     Select Case .FeedMode
                         Case FeedMode.UNIT_PER_MIN
@@ -2215,7 +3347,7 @@ Public Class MG_BasicViewer
                                             totalCutTime += cutTime
                                             .MotionTime = cutTime
                                         Case Motion.LINE
-                                            cutTime = LatheCutTimeBySFPM(.Xold, .Xpos, .Zpos - .Zold, feedrate, .Speed, .MaxRpm, MachineType, .FeedMode)
+                                            cutTime = LatheCutTimeBySFPM(.XYZold.X, .XYZpos.X, .XYZpos.Z - .XYZold.Z, feedrate, .Speed, .MaxRpm, MachineType, .FeedMode)
                                             totalCutTime += cutTime
                                             .MotionTime = cutTime
                                         Case Motion.RAPID
@@ -2264,16 +3396,16 @@ Public Class MG_BasicViewer
             Select Case .ArcPlane
                 Case Motion.XY_PLN
                     For s = 1 To sngSegments
-                        arcTime += LatheCutTimeBySFPM(.Xold, .Xpos, .Ypos - .Yold, .FeedRate, .Speed, .MaxRpm, MachineType, .FeedMode)
+                        arcTime += LatheCutTimeBySFPM(.XYZold.X, .XYZpos.X, .XYZpos.Y - .XYZold.Y, .FeedRate, .Speed, .MaxRpm, MachineType, .FeedMode)
                     Next s
                 Case Motion.XZ_PLN
                     For s = 1 To sngSegments
-                        arcTime += LatheCutTimeBySFPM(.Xold, .Xpos, .Zpos - .Zold, .FeedRate, .Speed, .MaxRpm, MachineType, .FeedMode)
+                        arcTime += LatheCutTimeBySFPM(.XYZold.X, .XYZpos.X, .XYZpos.Z - .XYZold.Z, .FeedRate, .Speed, .MaxRpm, MachineType, .FeedMode)
                     Next s
 
                 Case Motion.YZ_PLN
                     For s = 1 To sngSegments
-                        arcTime += LatheCutTimeBySFPM(.Yold, .Ypos, .Zpos - .Zold, .FeedRate, .Speed, .MaxRpm, MachineType, .FeedMode)
+                        arcTime += LatheCutTimeBySFPM(.XYZold.Y, .XYZpos.Y, .XYZpos.Z - .XYZold.Z, .FeedRate, .Speed, .MaxRpm, MachineType, .FeedMode)
                     Next s
             End Select
         End With
@@ -2285,14 +3417,13 @@ Public Class MG_BasicViewer
     ''' </summary>
     ''' <returns>Time in minutes to travel the distance</returns>
     ''' <remarks>Only works with linear moves</remarks>
-    Private Function LatheCutTimeBySFPM(ByVal od As Single,
-                                                                            ByVal id As Single,
-                                                                            ByVal zDist As Single,
-                                                                            ByVal feed As Single,
-                                                                            ByVal speed As Single,
-                                                                            ByVal maxRPM As Single,
-                                                                            ByVal machineType As MacGen.MachineType,
-                                                                            ByVal feedMode As FeedMode) As Double
+    Private Function LatheCutTimeBySFPM(od As Single, id As Single,
+zDist As Single,
+feed As Single,
+speed As Single,
+maxRPM As Single,
+machineType As MachineType,
+feedMode As FeedMode) As Double
         Dim rpmOd As Double
         Dim rpmId As Double
         Dim L, N, maxRpmDia As Double
@@ -2307,7 +3438,7 @@ Public Class MG_BasicViewer
         od = Math.Abs(od)
         id = Math.Abs(id)
         'Perform all calcs using diameter.
-        If machineType = MacGen.MachineType.LATHERAD Then
+        If machineType = MachineType.LATHERAD Then
             od *= 2
             id *= 2
         End If
@@ -2331,12 +3462,12 @@ Public Class MG_BasicViewer
 
         rpmOd = surfaceInchesPerMin / (Math.PI * od)
         rpmId = surfaceInchesPerMin / (Math.PI * id)
-        mCurMotionRec.RPM = CSng(rpmOd)
+        mCurMotionRec.RPM = rpmOd
 
         If od = id Then 'Const rpm
             If zDist = 0 Then Return 0
             travel = Math.Abs(zDist)
-            If feedMode = MacGen.FeedMode.UNIT_PER_MIN Then
+            If feedMode = FeedMode.UNIT_PER_MIN Then
                 Return travel * feed
             Else
                 Return (travel / feed) / rpmOd
@@ -2346,7 +3477,7 @@ Public Class MG_BasicViewer
         End If
 
         'Feed per minute requires no further calculations
-        If feedMode = MacGen.FeedMode.UNIT_PER_MIN Then
+        If feedMode = FeedMode.UNIT_PER_MIN Then
             Return travel * feed
         End If
 
@@ -2381,21 +3512,21 @@ Public Class MG_BasicViewer
 
     End Function
 
-    Private Sub CalculateMotionRecordLength()
+    Private Sub CalculateMotionRecordLength(mr As clsMotionRecord)
         Dim xleg1, yleg1, zleg1, xleg2, yleg2, zleg2 As Single
 
-        Select Case mCurMotionRec.MotionType
+        Select Case mr.MotionType
             Case Motion.RAPID
-                If mCurMotionRec.Rotate Then
-                    CalculateLengthOfRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Zpos, mCurMotionRec.Zold, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+                If mr.Rotate Then
+                    CalculateLengthOfRotaryArc(mr, mr.XYZpos.X, mr.XYZold.X, mr.XYZpos.Y, mr.XYZold.Y, mr.XYZpos.Z, mr.XYZold.Z, mr.OldRotaryPos, mr.NewRotaryPos, mr.RotaryDir)
                 Else
                     If mDrawDogLeg Then
                         CalculateDogLegMotion(xleg1, yleg1, zleg1, xleg2, yleg2, zleg2)
-                        mCurMotionRec.RapidLength = VectorLength(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, xleg1, yleg1, zleg1)
-                        mCurMotionRec.RapidLength += VectorLength(xleg1, yleg1, zleg1, xleg2, yleg2, zleg2)
-                        mCurMotionRec.RapidLength += VectorLength(xleg2, yleg2, zleg2, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+                        mr.RapidLength = VectorLength(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z, xleg1, yleg1, zleg1)
+                        mr.RapidLength += VectorLength(xleg1, yleg1, zleg1, xleg2, yleg2, zleg2)
+                        mr.RapidLength += VectorLength(xleg2, yleg2, zleg2, mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z)
                     End If
-                    mCurMotionRec.RapidLength = VectorLength(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+                    mr.RapidLength = VectorLength(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z, mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z)
                 End If
 
             Case Motion.HOLE_I, Motion.HOLE_R
@@ -2403,33 +3534,33 @@ Public Class MG_BasicViewer
                     CalculateDogLegMotion(xleg1, yleg1, zleg1, xleg2, yleg2, zleg2)
 
                     'A rotary move is on the drill cycle line
-                    If mCurMotionRec.Rotate Then
-                        If mCurMotionRec.MotionType = Motion.HOLE_I Then 'Return to inital Z
-                            CalculateLengthOfRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.DrillClear, mCurMotionRec.DrillClear, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+                    If mr.Rotate Then
+                        If mr.MotionType = Motion.HOLE_I Then 'Return to inital Z
+                            CalculateLengthOfRotaryArc(mr, mr.XYZpos.X, mr.XYZold.X, mr.XYZpos.Y, mr.XYZold.Y, mr.DrillClear, mr.DrillClear, mr.OldRotaryPos, mr.NewRotaryPos, mr.RotaryDir)
                         Else
-                            CalculateLengthOfRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Rpoint, mCurMotionRec.Rpoint, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+                            CalculateLengthOfRotaryArc(mr, mr.XYZpos.X, mr.XYZold.X, mr.XYZpos.Y, mr.XYZold.Y, mr.Rpoint, mr.Rpoint, mr.OldRotaryPos, mr.NewRotaryPos, mr.RotaryDir)
                         End If
                     Else
-                        mCurMotionRec.RapidLength = VectorLength(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, xleg1, yleg1, mCurMotionRec.Rpoint)
-                        mCurMotionRec.RapidLength += VectorLength(xleg1, yleg1, mCurMotionRec.Rpoint, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Rpoint)
+                        mr.RapidLength = VectorLength(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z, xleg1, yleg1, mr.Rpoint)
+                        mr.RapidLength += VectorLength(xleg1, yleg1, mr.Rpoint, mr.XYZpos.X, mr.XYZpos.Y, mr.Rpoint)
                     End If
                 End If
 
-                mCurMotionRec.CuttingLength = VectorLength(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Rpoint, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
-                mCurMotionRec.RapidLength += VectorLength(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.DrillClear, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+                mr.CuttingLength = VectorLength(mr.XYZpos.X, mr.XYZpos.Y, mr.Rpoint, mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z)
+                mr.RapidLength += VectorLength(mr.XYZpos.X, mr.XYZpos.Y, mr.DrillClear, mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z)
 
             Case Motion.LINE
-                If mCurMotionRec.Rotate Then
-                    CalculateLengthOfRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Zpos, mCurMotionRec.Zold, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+                If mr.Rotate Then
+                    CalculateLengthOfRotaryArc(mr, mr.XYZpos.X, mr.XYZold.X, mr.XYZpos.Y, mr.XYZold.Y, mr.XYZpos.Z, mr.XYZold.Z, mr.OldRotaryPos, mr.NewRotaryPos, mr.RotaryDir)
                 Else
-                    mCurMotionRec.CuttingLength = VectorLength(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+                    mr.CuttingLength = VectorLength(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z, mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z)
                 End If
             Case Motion.CCARC, Motion.CWARC
-                mCurMotionRec.CuttingLength = ArcLength(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Zpos, mCurMotionRec.Zold, mCurMotionRec.Rad, mCurMotionRec.Sang, mCurMotionRec.Eang, mCurMotionRec.ArcPlane)
+                mr.CuttingLength = ArcLength(mr.XYZpos.X, mr.XYZold.X, mr.XYZpos.Y, mr.XYZold.Y, mr.XYZpos.Z, mr.XYZold.Z, mr.Rad, mr.Sang, mr.Eang, mr.ArcPlane)
         End Select
     End Sub
 
-    Private Sub CalculateLengthOfRotaryArc(ByVal Xe As Single, ByVal Xs As Single, ByVal Ye As Single, ByVal Ys As Single, ByVal Ze As Single, ByVal Zs As Single, ByVal Startang As Single, ByVal Endang As Single, ByVal ArcDir As Single)
+    Private Sub CalculateLengthOfRotaryArc(mr As clsMotionRecord, Xe As Single, Xs As Single, Ye As Single, Ys As Single, Ze As Single, Zs As Single, Startang As Single, Endang As Single, ArcDir As Single)
         Dim rotSegs As Integer ' number of angular segments
         Dim totalAngle, radFromAxis As Single
 
@@ -2446,20 +3577,20 @@ Public Class MG_BasicViewer
         rotSegs = CInt(Math.Abs(totalAngle / mSegAngle))
 
         Select Case RotaryPlane
-            Case Axis.X  'X
-                If mCurMotionRec.MotionType = Motion.RAPID Then
-                    mCurMotionRec.RapidLength = (Math.Abs(Xe - Xs) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
+            Case ArcAxis.X  'X
+                If mr.MotionType = Motion.RAPID Then
+                    mr.RapidLength = (Math.Abs(Xe - Xs) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
                 Else
-                    mCurMotionRec.CuttingLength = (Math.Abs(Xe - Xs) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
+                    mr.CuttingLength = (Math.Abs(Xe - Xs) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
                 End If
 
-            Case Axis.Y
-                If mCurMotionRec.MotionType = Motion.RAPID Then
-                    mCurMotionRec.RapidLength = (Math.Abs(Ye - Ys) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
+            Case ArcAxis.Y
+                If mr.MotionType = Motion.RAPID Then
+                    mr.RapidLength = (Math.Abs(Ye - Ys) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
                 Else
-                    mCurMotionRec.CuttingLength = (Math.Abs(Ye - Ys) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
+                    mr.CuttingLength = (Math.Abs(Ye - Ys) + ((Math.Abs(totalAngle) / ONE_RADIAN) * (radFromAxis * 2 * PI_S)))
                 End If
-            Case Axis.Z
+            Case ArcAxis.Z
                 'Not implemented
         End Select
     End Sub
@@ -2467,12 +3598,16 @@ Public Class MG_BasicViewer
 #End Region
 
 #Region "Graphics"
-    Private Sub PolyArc(ByVal Xctr As Single, ByVal Yctr As Single, ByVal Zctr As Single,
-                    ByVal Xe As Single, ByVal Xs As Single,
-                    ByVal Ye As Single, ByVal Ys As Single,
-                    ByVal Ze As Single, ByVal Zs As Single,
-                    ByVal r As Single, ByRef Startang As Single, ByRef Endang As Single,
-                    ByVal ArcDir As Integer, ByRef Wplane As Integer)
+    Private Sub PolyArcDraw(Xctr As Single, Yctr As Single, Zctr As Single,
+                            Xe As Single, Xs As Single,
+                            Ye As Single, Ys As Single,
+                            Ze As Single, Zs As Single,
+                            r As Single,
+                            Startang As Single,
+                            Endang As Single,
+                            ArcDir As Integer,
+                            Wplane As Integer)
+        If mViewRect.Width = 0 Then Return
 
         Dim s As Integer 'counter
         Dim sngSegments As Integer ' number of angular segments
@@ -2482,73 +3617,99 @@ Public Class MG_BasicViewer
         Dim circumference As Single = PI_S * (r * 2)
         sngTotalAngle = Math.Abs(Startang - Endang)
         Dim circLen As Single = circumference * (sngTotalAngle / ONE_RADIAN)
-        sngSegments = CInt(Int(sngTotalAngle / mSegAngle))
-        Dim dxfKey As String = String.Empty
-        If SavingDXF Then
-            Dim circ As Boolean = sngTotalAngle = ONE_RADIAN
-            If ArcDir = -1 Then
-                If circ Then
-                    dxfKey = "@CW_CIRCLE"
-                Else
-                    dxfKey = "@CW_ARC"
-                End If
-            Else
-                If circ Then
-                    dxfKey = "@CCW_CIRCLE"
-                Else
-                    dxfKey = "@CCW_ARC"
-                End If
-            End If
+        'I need a ratio between the size of the screen and the length of the arc
+        Dim ratioBetweenArcLenAndScreenSize = (circLen / (mViewRect.Width / mMasterGfxAdjustScale))
+        '1 to 1 would = mArcQuality
+        If mAllMotionRecords.Count < 5000 AndAlso ratioBetweenArcLenAndScreenSize < 1 Then
+            ratioBetweenArcLenAndScreenSize = 1
         End If
-
-        Dim doDXF As Boolean = SavingDXF
-        'What we want here is to specify a chordial length the will result in  a segment count
-        'If circLen / sngSegments < 0.01 Then
-        '    'Debug.Print(CStr(circLen / sngSegments))
-        '    'Debug.Print(sngSegments.ToString)
-        '    sngSegments = CInt(circLen / 0.01)
-        'End If
+        Dim circSegs = CInt(ratioBetweenArcLenAndScreenSize * mArcSegCount)
+        'sngSegments = CInt(Int(sngTotalAngle / mSegAngle))
+        sngSegments = circSegs
 
         'Re-calculate angle increment
         sngAngle = (ArcDir * (sngTotalAngle / sngSegments))
-        SavingDXF = False
-        LineEnd4D(Xs, Ys, Zs)
-        SavingDXF = doDXF
-        mPoints.Clear()
+
+        LineEnd3D(Xs, Ys, Zs)
+        mPoints2D.Clear()
         Select Case Wplane
             Case Motion.XY_PLN
                 helixSeg = (Ze - Zs) / sngSegments
-                If SavingDXF Then
-                    Output_DXF_Section(dxfKey, Xs, Ys, Zs, Xe, Ye, Ze)
-                Else
-                    For s = 1 To sngSegments
-                        LineEnd4D(CSng(Xctr + (r * Math.Cos((s * sngAngle) + Startang))), CSng(Yctr + (r * Math.Sin((s * sngAngle) + Startang))), Zs + helixSeg * s)
-                    Next s
-                End If
+                For s = 1 To sngSegments
+                    LineEnd3D(Xctr + (r * Math.Cos((s * sngAngle) + Startang)), (Yctr + (r * Math.Sin((s * sngAngle) + Startang))), Zs + helixSeg * s)
+                Next s
             Case Motion.XZ_PLN
                 helixSeg = (Ye - Ys) / sngSegments
                 For s = 1 To sngSegments
-                    LineEnd4D(CSng(Xctr + (r * Math.Cos((s * sngAngle) + Startang))), Ys + helixSeg * s, CSng(Zctr + (r * Math.Sin((s * sngAngle) + Startang))))
+                    LineEnd3D(Xctr + (r * Math.Cos((s * sngAngle) + Startang)), Ys + (helixSeg * s), Zctr + (r * Math.Sin((s * sngAngle) + Startang)))
                 Next s
 
             Case Motion.YZ_PLN
                 helixSeg = (Xe - Xs) / sngSegments
                 For s = 1 To sngSegments
-                    LineEnd4D(Xs + helixSeg * s, CSng(Yctr + (r * Math.Cos((s * sngAngle) + Startang))), CSng(Zctr + (r * Math.Sin((s * sngAngle) + Startang))))
+                    LineEnd3D(Xs + (helixSeg * s), Yctr + (r * Math.Cos((s * sngAngle) + Startang)), Zctr + (r * Math.Sin((s * sngAngle) + Startang)))
                 Next s
 
         End Select
-        SavingDXF = False
-        LineEnd4D(Xe, Ye, Ze)
-        SavingDXF = doDXF
-
+        LineEnd3D(Xe, Ye, Ze)
     End Sub
+    Private Sub PolyArcDXF(Xctr As Single, Yctr As Single,
+                            Zctr As Single, Xe As Single,
+                            Xs As Single, Ye As Single,
+                            Ys As Single, Ze As Single,
+                            Zs As Single, r As Single,
+                            Startang As Single,
+                            Endang As Single,
+                            ArcDir As Integer,
+                            Wplane As Integer)
 
-    Private Sub DrawRotaryArc(ByVal Xe As Single, ByVal Xs As Single, ByVal Ye As Single, ByVal Ys As Single, ByVal Ze As Single, ByVal Zs As Single, ByVal Startang As Single, ByVal Endang As Single, ByVal ArcDir As Single)
+        Dim sngSegments As Integer ' number of angular segments
+        Dim helixSeg As Single
+        Dim sngAngle As Single
+        Dim sngTotalAngle As Single
+        Dim circumference As Single = PI_S * (r * 2)
+        sngTotalAngle = Math.Abs(Startang - Endang)
+        Dim circLen As Single = circumference * (sngTotalAngle / ONE_RADIAN)
+        sngSegments = CInt(Int(sngTotalAngle / mSegAngle))
+        Dim dxfKey As String = String.Empty
+
+        Dim circ As Boolean = Math.Abs(sngTotalAngle - ONE_RADIAN) < 0.00001
+        If ArcDir = -1 Then
+            If circ Then
+                dxfKey = "@CW_CIRCLE"
+            Else
+                dxfKey = "@CW_ARC"
+            End If
+        Else
+            If circ Then
+                dxfKey = "@CCW_CIRCLE"
+            Else
+                dxfKey = "@CCW_ARC"
+            End If
+        End If
+        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Dim ctr = Vector3.Transform(New Vector3(Xctr, Yctr, Zctr), mViewMatrix)
+
+        'Re-calculate angle increment
+        sngAngle = (ArcDir * (sngTotalAngle / sngSegments))
+        LineEnd3D(Xs, Ys, Zs)
+        mPoints2D.Clear()
+        Select Case Wplane
+            Case Motion.XY_PLN
+                helixSeg = (Ze - Zs) / sngSegments
+                Output_DXF_Section(dxfKey, xOld, yOld, zOld, ep.X, ep.Y, ep.Z, ctr.X, ctr.Y, ctr.Z)
+            Case Motion.XZ_PLN
+            Case Motion.YZ_PLN
+        End Select
+        xOld = ep.X
+        yOld = ep.Y
+        zOld = ep.Z
+    End Sub
+    Private Sub DrawRotaryArc(Xe As Single, Xs As Single, Ye As Single, Ys As Single, Ze As Single, Zs As Single, Startang As Single, Endang As Single, ArcDir As Single)
         Dim s As Integer 'counter
         Dim rotSegs As Integer ' number of angular segments
-        Dim axisSeg1, axisSeg3, angle, totalAngle, radFromAxis As Single
-
+        Dim axisSeg1, axisSeg3, totalAngle, radFromAxis As Single
+        FourthAxis = 0!
         If RotaryType = RotaryMotionType.BMC Then 'Like BMC
             If ArcDir = -1 Then
                 Endang = (Endang - ONE_RADIAN)
@@ -2560,246 +3721,121 @@ Public Class MG_BasicViewer
         End If
         totalAngle = (Endang - Startang)
         rotSegs = CInt(Math.Abs(totalAngle / mSegAngle))
-
         Select Case RotaryPlane
-            Case Axis.X  'X
+            Case ArcAxis.X  'X
                 Startang = (Startang + AngleFromPoint(Zs, Ys, False) * RotaryDirection) * RotaryDirection
                 Endang = (Endang + AngleFromPoint(Zs, Ys, False) * RotaryDirection) * RotaryDirection
 
                 'Re-calculate angle increment
-                angle = (totalAngle / rotSegs) * RotaryDirection
+                Dim angle = (totalAngle / rotSegs) * RotaryDirection
                 axisSeg1 = (Xe - Xs) / rotSegs
                 axisSeg3 = (Ze - Zs) / rotSegs
 
                 radFromAxis = VectorLength(0, Ys, Zs, 0, 0, 0)
-                LineEnd3D(Xs, CSng(radFromAxis * Math.Sin(Startang)), CSng(radFromAxis * Math.Cos(Startang)))
-                mPoints.Clear()
+                LineEnd3D(Xs, (radFromAxis * Math.Sin(Startang)), (radFromAxis * Math.Cos(Startang)))
+                mPoints2D.Clear()
                 For s = 1 To rotSegs
                     radFromAxis = VectorLength(0, Ys, Zs + (axisSeg3 * s), 0, 0, 0)
-                    LineEnd3D(Xs + (axisSeg1 * s), CSng(radFromAxis * Math.Sin((s * angle) + Startang)), CSng(radFromAxis * Math.Cos((s * angle) + Startang)))
+                    LineEnd3D(Xs + (axisSeg1 * s), (radFromAxis * Math.Sin((s * angle) + Startang)), (radFromAxis * Math.Cos((s * angle) + Startang)))
                 Next s
-
-            Case Axis.Y
+            Case ArcAxis.Y
                 Startang = (Startang - AngleFromPoint(Zs, Xs, False) * RotaryDirection) * -RotaryDirection
                 Endang = (Endang - AngleFromPoint(Zs, Xs, False) * RotaryDirection) * -RotaryDirection
 
                 'Re-calculate angle increment
-                angle = (totalAngle / rotSegs) * -RotaryDirection
+                Dim angle = (totalAngle / rotSegs) * -RotaryDirection
                 axisSeg1 = (Ye - Ys) / rotSegs
                 axisSeg3 = (Ze - Zs) / rotSegs
-                'Debug.Print Segments
                 radFromAxis = VectorLength(Xs, 0, Zs, 0, 0, 0)
-                LineEnd3D(CSng(radFromAxis * Math.Sin(Startang)), Ys, CSng(radFromAxis * Math.Cos(Startang)))
-                mPoints.Clear()
+                LineEnd3D((radFromAxis * Math.Sin(Startang)), Ys, (radFromAxis * Math.Cos(Startang)))
+                mPoints2D.Clear()
                 For s = 1 To rotSegs
                     radFromAxis = VectorLength(Xs, 0, Zs + (axisSeg3 * s), 0, 0, 0)
-                    LineEnd3D(CSng(radFromAxis * Math.Sin((s * angle) + Startang)), Ys + (axisSeg1 * s), CSng(radFromAxis * Math.Cos((s * angle) + Startang)))
+                    LineEnd3D((radFromAxis * Math.Sin((s * angle) + Startang)), Ys + (axisSeg1 * s), (radFromAxis * Math.Cos((s * angle) + Startang)))
                 Next s
-            Case Axis.Z
+            Case ArcAxis.Z
                 'Not implemented
         End Select
-        LineEnd4D(Xe, Ye, Ze)
+        'Here we set the new model matrix
+        FourthAxis = mCurMotionRec.NewRotaryPos
+        LineEnd3D(Xe, Ye, Ze)
     End Sub
 
-    Private Sub Line3D(ByVal Xs As Single, ByVal Ys As Single, ByVal Zs As Single, ByVal Xe As Single, ByVal Ye As Single, ByVal Ze As Single)
-        Dim yawXs, yawYs, rollZs As Single
-        Dim yawXe, yawYe, rollZe, temp As Single
-
-        Select Case RotaryPlane
-            Case Axis.X 'x
-                'X-axis start pre-rotate
-                temp = (mCosRot * Ys) - (mSinRot * Zs)
-                Zs = (mSinRot * Ys) + (mCosRot * Zs)
-                Ys = temp
-                'end pre-rotate
-                temp = (mCosRot * Ye) - (mSinRot * Ze)
-                Ze = (mSinRot * Ye) + (mCosRot * Ze)
-                Ye = temp
-            Case Axis.Y 'y
-                'Y-axis start pre-rotate
-                temp = (mCosRot * Zs) - (mSinRot * Xs)
-                Xs = (mCosRot * Xs) + (mSinRot * Zs)
-                Zs = temp
-                'end
-                temp = (mCosRot * Ze) - (mSinRot * Xe)
-                Xe = (mCosRot * Xe) + (mSinRot * Ze)
-                Ze = temp
-            Case Axis.Z 'z
-                'Z-axis start pre-rotate
-                temp = (mCosRot * Xs) - (mSinRot * Ys)
-                Xs = (mSinRot * Xs) + (mCosRot * Ys)
-                Ys = temp
-                'end pre-rotate
-                temp = (mCosRot * Xe) - (mSinRot * Ye)
-                Xe = (mSinRot * Xe) + (mCosRot * Ye)
-                Ye = temp
-
-        End Select
-
-        If SavingDXF Then Output_DXF_Section("@LINE", xOld, yOld, zOld, Xe, Ye, Ze)
-        xOld = Xe
-        yOld = Ye
-        zOld = Ze
-
-        'Start
-        '===========================
-        'Z twist
-        yawXs = (mCosYaw * Xs) - (mSinYaw * Ys)
-        yawYs = (mSinYaw * Xs) + (mCosYaw * Ys)
-
-        'Y twist
-        rollZs = (mCosRoll * Zs) - (mSinRoll * yawXs)
-        yawXs = (mCosRoll * yawXs) + (mSinRoll * Zs) 'New X
-
-        'X twist
-        yawYs = (mCosPitch * yawYs) - (mSinPitch * rollZs) 'New Y
-
-        'End
-        '===========================
-        'Z twist
-        yawXe = (mCosYaw * Xe) - (mSinYaw * Ye)
-        yawYe = (mSinYaw * Xe) + (mCosYaw * Ye)
-        'Y twist
-
-        rollZe = (mCosRoll * Ze) - (mSinRoll * yawXe)
-        yawXe = (mCosRoll * yawXe) + (mSinRoll * Ze) 'New X
-        'X twist
-        yawYe = (mCosPitch * yawYe) - (mSinPitch * rollZe) 'New Y
-
-        Line(yawXs, yawYs, yawXe, yawYe)
+    Private Sub LineScaled3D(Xs As Single, Ys As Single, Zs As Single, Xe As Single, Ye As Single, Ze As Single, scale As Single)
+        Xs *= scale
+        Ys *= scale
+        Zs *= scale
+        Xe *= scale
+        Ye *= scale
+        Ze *= scale
+        Line3D(Xs, Ys, Zs, Xe, Ye, Ze)
     End Sub
 
-    Public Shared Function VectorLength(ByVal X1 As Single, ByVal Y1 As Single, ByVal Z1 As Single, ByVal x2 As Single, ByVal y2 As Single, ByVal Z2 As Single) As Single
-        Return CSng(Math.Sqrt(((X1 - x2) ^ 2) + ((Y1 - y2) ^ 2) + ((Z1 - Z2) ^ 2)))
+
+
+    Private Sub DrawSinglePoint3D(Xe As Single, Ye As Single, Ze As Single, Optional prescale As Single = 0)
+        Xe *= mMasterGfxAdjustScale
+        Ye *= mMasterGfxAdjustScale
+        Ze *= mMasterGfxAdjustScale
+        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        mPoints2D.Add(New PointF(ep.X, ep.Y))
+        mLastPos.X = ep.X
+        mLastPos.Y = ep.Y
+        xOld = ep.X
+        yOld = ep.Y
+        zOld = ep.Z
+    End Sub
+
+    Private Function Get2dFrom3D(input As Vector3) As PointF
+        Dim ep = Vector3.Transform(input, mViewMatrix)
+        Return New PointF(ep.X, ep.Y)
     End Function
 
-    Public Shared Function AngleFromPoint(ByVal x As Single, ByVal y As Single, ByVal deg As Boolean) As Single
-        Dim theta As Single
+    Public Shared Function VectorLength(X1 As Double, Y1 As Double, Z1 As Double, x2 As Double, y2 As Double, Z2 As Double) As Double
+        Return (Math.Sqrt(((X1 - x2) ^ 2) + ((Y1 - y2) ^ 2) + ((Z1 - Z2) ^ 2)))
+    End Function
+
+    Public Shared Function AngleFromPoint(x As Double, y As Double, deg As Boolean) As Single
+        Dim theta As Double
         If x > 0 AndAlso y > 0 Then ' Quadrant 1
-            theta = CSng(Math.Atan(y / x))
+            theta = (Math.Atan(y / x))
         ElseIf x < 0 AndAlso y > 0 Then  ' Quadrant 2
-            theta = CSng(Math.Atan(y / x) + Math.PI)
+            theta = (Math.Atan(y / x) + Math.PI)
         ElseIf x < 0 AndAlso y < 0 Then  ' Quadrant 3
-            theta = CSng(Math.Atan(y / x) + Math.PI)
+            theta = (Math.Atan(y / x) + Math.PI)
         ElseIf x > 0 AndAlso y < 0 Then  ' Quadrant 4
-            theta = CSng(Math.Atan(y / x) + 2 * Math.PI)
+            theta = (Math.Atan(y / x) + 2 * Math.PI)
         End If
 
         ' Exceptions for points landing on an axis
         If x > 0 AndAlso y = 0 Then '0
             theta = 0
         ElseIf x = 0 AndAlso y > 0 Then  '90
-            theta = Math.PI / 2
+            theta = QUARTER_RADIAN
         ElseIf x < 0 AndAlso y = 0 Then  '180
             theta = Math.PI
         ElseIf x = 0 AndAlso y < 0 Then  '270
-            theta = 3 * (Math.PI / 2)
+            theta = 3 * (QUARTER_RADIAN)
         End If
 
         ' if you want the angle in degrees use this conversion
         If deg Then
-            theta = CSng(theta * (180.0 / Math.PI))
+            theta = (theta * (180.0 / Math.PI))
         End If
         Return theta
 
     End Function
 
-    Private Sub LineEnd4D(ByVal Xe As Single, ByVal Ye As Single, ByVal Ze As Single)
-        Dim yawXe, yawYe, rollZe, temp As Single
 
-        Select Case RotaryPlane
-            Case Axis.X 'x
-                'X-axis start pre-rotate
-                'end pre-rotate
-                temp = (mCosRot * Ye) - (mSinRot * Ze)
-                Ze = (mSinRot * Ye) + (mCosRot * Ze)
-                Ye = temp
-            Case Axis.Y 'y
-                'Y-axis start pre-rotate
-                'end
-                temp = (mCosRot * Ze) - (mSinRot * Xe)
-                Xe = (mCosRot * Xe) + (mSinRot * Ze)
-                Ze = temp
-            Case Axis.Z 'z
-                'Z-axis start pre-rotate
-                'end pre-rotate
-                temp = (mCosRot * Xe) - (mSinRot * Ye)
-                Xe = (mSinRot * Xe) + (mCosRot * Ye)
-                Ye = temp
-        End Select
-
-        If SavingDXF Then Output_DXF_Section("@LINE", xOld, yOld, zOld, Xe, Ye, Ze)
-        xOld = Xe
-        yOld = Ye
-        zOld = Ze
-
-
-        'End
-        '===========================
-        'Z twist
-        yawXe = (mCosYaw * Xe) - (mSinYaw * Ye)
-        yawYe = (mSinYaw * Xe) + (mCosYaw * Ye)
-        'Y twist
-        rollZe = (mCosRoll * Ze) - (mSinRoll * yawXe)
-        yawXe = (mCosRoll * yawXe) + (mSinRoll * Ze) 'New X
-        'X twist
-        yawYe = (mCosPitch * yawYe) - (mSinPitch * rollZe) 'New Y
-        LineEnd(yawXe, yawYe)
-
-    End Sub
-
-    Private Sub Point3D(ByVal Xe As Single, ByVal Ye As Single, ByVal Ze As Single)
-        xOld = Xe
-        yOld = Ye
-        zOld = Ze
-
-        Dim yawXe, yawYe, rollZe As Single
-        'End
-        '===========================
-        'Z twist
-        yawXe = (mCosYaw * Xe) - (mSinYaw * Ye)
-        yawYe = (mSinYaw * Xe) + (mCosYaw * Ye)
-        'Y twist
-        rollZe = (mCosRoll * Ze) - (mSinRoll * yawXe)
-        yawXe = (mCosRoll * yawXe) + (mSinRoll * Ze) 'New X
-        'X twist
-        yawYe = (mCosPitch * yawYe) - (mSinPitch * rollZe) 'New Y
-
-        mPoints.Add(New PointF(yawXe, yawYe))
-        mLastPos.X = yawXe
-        mLastPos.Y = yawYe
-
-    End Sub
-
-    Private Sub LineEnd3D(ByVal Xe As Single, ByVal Ye As Single, ByVal Ze As Single)
-        If SavingDXF Then Output_DXF_Section("@LINE", xOld, yOld, zOld, Xe, Ye, Ze)
-        xOld = Xe
-        yOld = Ye
-        zOld = Ze
-
-
-        Dim yawXe, yawYe, rollZe As Single
-        'End
-        '===========================
-        'Z twist
-        yawXe = (mCosYaw * Xe) - (mSinYaw * Ye)
-        yawYe = (mSinYaw * Xe) + (mCosYaw * Ye)
-        'Y twist
-        rollZe = (mCosRoll * Ze) - (mSinRoll * yawXe)
-        yawXe = (mCosRoll * yawXe) + (mSinRoll * Ze) 'New X
-        'X twist
-        yawYe = (mCosPitch * yawYe) - (mSinPitch * rollZe) 'New Y
-        LineEnd(yawXe, yawYe)
-    End Sub
 
 #Region "DXF"
-    Public Sub SaveAsDXF(ByVal templateFile As String, ByVal dxfOutFile As String)
+    Public Sub SaveAsDXF(templateFile As String, dxfOutFile As String)
         mDxfOutFile = dxfOutFile
         '(?<SEC>@.[^@]*)
         '(?<WORD>\[.[^\[]*\])
-        Dim sectionMatches As New System.Text.RegularExpressions.Regex("@.[^@]*", System.Text.RegularExpressions.RegexOptions.Singleline)
+        Dim sectionMatches As New Text.RegularExpressions.Regex("@.[^@]*", System.Text.RegularExpressions.RegexOptions.Singleline)
         Dim templateContents As String = IO.File.ReadAllText(templateFile)
-        Dim sec As System.Text.RegularExpressions.Match = sectionMatches.Match(templateContents)
+        Dim sec As Text.RegularExpressions.Match = sectionMatches.Match(templateContents)
         Dim key As String
         Dim secName As String
         Dim secContents As String
@@ -2808,39 +3844,43 @@ Public Class MG_BasicViewer
             With sec
                 secName = sec.Value.Substring(0, sec.Value.IndexOf(vbCrLf)).Trim
                 secContents = sec.Value.Substring(sec.Value.IndexOf(vbCrLf) + 2).ToUpper
-                'Debug.Print(secName)
                 mSectionsDXF.Add(secName, secContents)
                 sec = .NextMatch
             End With
         End While
 
-        SavingDXF = True
+        'mSavingDXF = True
+        SetDrawDelegates(enDrawMethod.DXF)
+
         IO.File.WriteAllText(mDxfOutFile, String.Empty)
         key = "@START"
         Output_DXF_Section(key, 0, 0, 0, 0, 0, 0)
 
-        CreateDisplayLists()
+        CreateDisplayListsFromMotionRecords()
 
         key = "@END"
         Output_DXF_Section(key, 0, 0, 0, 0, 0, 0)
-        SavingDXF = False
+        SetDrawDelegates(enDrawMethod.DRAW)
+        'mSavingDXF = False
         mSectionsDXF.Clear()
         mSectionsDXF = Nothing
         'Process end
     End Sub
 
-    Private Sub Output_DXF_Section(ByVal key As String)
-        Output_DXF_Section(key, mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+    Private Sub Output_DXF_Section(key As String)
+        Output_DXF_Section(key, mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZold.Z, mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z)
     End Sub
 
-    Private Sub Output_DXF_Section(ByVal key As String, ByVal Xs As Single, ByVal Ys As Single, ByVal Zs As Single, ByVal Xe As Single, ByVal Ye As Single, ByVal Ze As Single)
-        Dim words As New System.Text.RegularExpressions.Regex("\[.[^\[]*\]", System.Text.RegularExpressions.RegexOptions.Singleline)
+    Private Sub Output_DXF_Section(key As String, Xs As Single, Ys As Single, Zs As Single,
+                                   Xe As Single, Ye As Single, Ze As Single,
+                                   Optional Xc As Single = 0, Optional Yc As Single = 0, Optional Zc As Single = 0)
+        Dim words As New Text.RegularExpressions.Regex("\[.[^\[]*\]", System.Text.RegularExpressions.RegexOptions.Singleline)
         Dim retSec As String
         Dim rawSec As String
         If mSectionsDXF.ContainsKey(key) Then
             rawSec = mSectionsDXF(key)
             retSec = rawSec
-            Dim wrd As System.Text.RegularExpressions.Match = words.Match(rawSec)
+            Dim wrd As Text.RegularExpressions.Match = words.Match(rawSec)
             While wrd.Success
                 With wrd
                     Select Case wrd.Value.ToUpper
@@ -2855,19 +3895,19 @@ Public Class MG_BasicViewer
                         Case "[YOLD]"
                             retSec = retSec.Replace("[YOLD]", Format(Ys, "##0.0###"))
                         Case "[ZOLD]"
-                            retSec = retSec.Replace("[ZOLD]", Format(Xs, "##0.0###"))
+                            retSec = retSec.Replace("[ZOLD]", Format(Zs, "##0.0###"))
                         Case "[SANG]"
-                            Dim sang As Single = CSng(mCurMotionRec.Sang * (180.0 / Math.PI))
+                            Dim sang = (mCurMotionRec.Sang * (180.0 / Math.PI))
                             retSec = retSec.Replace("[SANG]", Format(sang, "##0.0###"))
                         Case "[EANG]"
-                            Dim eang As Single = CSng(mCurMotionRec.Eang * (180.0 / Math.PI))
+                            Dim eang = (mCurMotionRec.Eang * (180.0 / Math.PI))
                             retSec = retSec.Replace("[EANG]", Format(eang, "##0.0###"))
                         Case "[RAD]"
                             retSec = retSec.Replace("[RAD]", Format(mCurMotionRec.Rad, "##0.0###"))
                         Case "[XCENTR]"
-                            retSec = retSec.Replace("[XCENTR]", Format(mCurMotionRec.Xcentr, "##0.0###"))
+                            retSec = retSec.Replace("[XCENTR]", Format(Xc, "##0.0###"))
                         Case "[YCENTR]"
-                            retSec = retSec.Replace("[YCENTR]", Format(mCurMotionRec.Ycentr, "##0.0###"))
+                            retSec = retSec.Replace("[YCENTR]", Format(Yc, "##0.0###"))
                         Case "[RPOINT]"
                             retSec = retSec.Replace("[RPOINT]", Format(mCurMotionRec.Rpoint, "##0.0###"))
                         Case "[TOOL]"
@@ -2884,67 +3924,66 @@ Public Class MG_BasicViewer
 
 #End Region
 
-    Private Sub CalculateDogLegMotion(ByRef xleg1 As Single,
+    Private Function CalculateDogLegMotion(ByRef xleg1 As Single,
                                                           ByRef yleg1 As Single,
                                                           ByRef zleg1 As Single,
                                                           ByRef xleg2 As Single,
                                                           ByRef yleg2 As Single,
-                                                          ByRef zleg2 As Single)
+                                                          ByRef zleg2 As Single) As Integer
 
         Dim xleg, yleg, zleg As Single
         Dim xdir, ydir, zdir As Integer
-        xdir = Math.Sign(mCurMotionRec.Xpos - mCurMotionRec.Xold)
-        ydir = Math.Sign(mCurMotionRec.Ypos - mCurMotionRec.Yold)
-        zdir = Math.Sign(mCurMotionRec.Zpos - mCurMotionRec.Zold)
+        xdir = Math.Sign(mCurMotionRec.XYZpos.X - mCurMotionRec.XYZold.X)
+        ydir = Math.Sign(mCurMotionRec.XYZpos.Y - mCurMotionRec.XYZold.Y)
+        zdir = Math.Sign(mCurMotionRec.XYZpos.Z - mCurMotionRec.XYZold.Z)
 
-        xleg = Math.Abs(mCurMotionRec.Xpos - mCurMotionRec.Xold)
-        yleg = Math.Abs(mCurMotionRec.Ypos - mCurMotionRec.Yold)
-        zleg = Math.Abs(mCurMotionRec.Zpos - mCurMotionRec.Zold)
-
+        xleg = Math.Abs(mCurMotionRec.XYZpos.X - mCurMotionRec.XYZold.X)
+        yleg = Math.Abs(mCurMotionRec.XYZpos.Y - mCurMotionRec.XYZold.Y)
+        zleg = Math.Abs(mCurMotionRec.XYZpos.Z - mCurMotionRec.XYZold.Z)
         If xleg <= yleg AndAlso yleg <= zleg Then 'Long Z
-            xleg1 = mCurMotionRec.Xpos
-            yleg1 = mCurMotionRec.Yold + xleg * ydir
-            zleg1 = mCurMotionRec.Zold + xleg * zdir
-            xleg2 = mCurMotionRec.Xpos
-            yleg2 = mCurMotionRec.Ypos
-            zleg2 = mCurMotionRec.Zold + yleg * zdir
+            xleg1 = mCurMotionRec.XYZpos.X
+            yleg1 = mCurMotionRec.XYZold.Y + xleg * ydir
+            zleg1 = mCurMotionRec.XYZold.Z + xleg * zdir
+            xleg2 = mCurMotionRec.XYZpos.X
+            yleg2 = mCurMotionRec.XYZpos.Y
+            zleg2 = mCurMotionRec.XYZold.Z + yleg * zdir
         ElseIf xleg <= zleg AndAlso zleg <= yleg Then
-            xleg1 = mCurMotionRec.Xpos
-            yleg1 = mCurMotionRec.Yold + xleg * ydir
-            zleg1 = mCurMotionRec.Zold + xleg * zdir
-            xleg2 = mCurMotionRec.Xpos
-            yleg2 = mCurMotionRec.Yold + zleg * ydir
-            zleg2 = mCurMotionRec.Zpos
+            xleg1 = mCurMotionRec.XYZpos.X
+            yleg1 = mCurMotionRec.XYZold.Y + xleg * ydir
+            zleg1 = mCurMotionRec.XYZold.Z + xleg * zdir
+            xleg2 = mCurMotionRec.XYZpos.X
+            yleg2 = mCurMotionRec.XYZold.Y + zleg * ydir
+            zleg2 = mCurMotionRec.XYZpos.Z
         ElseIf zleg <= yleg AndAlso yleg <= xleg Then
-            xleg1 = mCurMotionRec.Xold + zleg * xdir
-            yleg1 = mCurMotionRec.Yold + zleg * ydir
-            zleg1 = mCurMotionRec.Zpos
-            xleg2 = mCurMotionRec.Xold + yleg * xdir
-            yleg2 = mCurMotionRec.Ypos
-            zleg2 = mCurMotionRec.Zpos
+            xleg1 = mCurMotionRec.XYZold.X + zleg * xdir
+            yleg1 = mCurMotionRec.XYZold.Y + zleg * ydir
+            zleg1 = mCurMotionRec.XYZpos.Z
+            xleg2 = mCurMotionRec.XYZold.X + yleg * xdir
+            yleg2 = mCurMotionRec.XYZpos.Y
+            zleg2 = mCurMotionRec.XYZpos.Z
         ElseIf zleg <= xleg AndAlso xleg <= yleg Then
-            xleg1 = mCurMotionRec.Xold + zleg * xdir
-            yleg1 = mCurMotionRec.Yold + zleg * ydir
-            zleg1 = mCurMotionRec.Zpos
-            xleg2 = mCurMotionRec.Xpos
-            yleg2 = mCurMotionRec.Yold + xleg * ydir
-            zleg2 = mCurMotionRec.Zpos
+            xleg1 = mCurMotionRec.XYZold.X + zleg * xdir
+            yleg1 = mCurMotionRec.XYZold.Y + zleg * ydir
+            zleg1 = mCurMotionRec.XYZpos.Z
+            xleg2 = mCurMotionRec.XYZpos.X
+            yleg2 = mCurMotionRec.XYZold.Y + xleg * ydir
+            zleg2 = mCurMotionRec.XYZpos.Z
         ElseIf yleg <= zleg AndAlso zleg <= xleg Then
-            xleg1 = mCurMotionRec.Xold + yleg * xdir
-            yleg1 = mCurMotionRec.Ypos
-            zleg1 = mCurMotionRec.Zold + yleg * zdir
-            xleg2 = mCurMotionRec.Xold + zleg * xdir
-            yleg2 = mCurMotionRec.Ypos
-            zleg2 = mCurMotionRec.Zpos
+            xleg1 = mCurMotionRec.XYZold.X + yleg * xdir
+            yleg1 = mCurMotionRec.XYZpos.Y
+            zleg1 = mCurMotionRec.XYZold.Z + yleg * zdir
+            xleg2 = mCurMotionRec.XYZold.X + zleg * xdir
+            yleg2 = mCurMotionRec.XYZpos.Y
+            zleg2 = mCurMotionRec.XYZpos.Z
         ElseIf yleg <= xleg AndAlso xleg <= zleg Then
-            xleg1 = mCurMotionRec.Xold + yleg * xdir
-            yleg1 = mCurMotionRec.Ypos
-            zleg1 = mCurMotionRec.Zold + yleg * zdir
-            xleg2 = mCurMotionRec.Xpos
-            yleg2 = mCurMotionRec.Ypos
-            zleg2 = mCurMotionRec.Zold + xleg * zdir
+            xleg1 = mCurMotionRec.XYZold.X + yleg * xdir
+            yleg1 = mCurMotionRec.XYZpos.Y
+            zleg1 = mCurMotionRec.XYZold.Z + yleg * zdir
+            xleg2 = mCurMotionRec.XYZpos.X
+            yleg2 = mCurMotionRec.XYZpos.Y
+            zleg2 = mCurMotionRec.XYZold.Z + xleg * zdir
         End If
-    End Sub
+    End Function
 
 
     Private Sub DrawMotionRecord()
@@ -2954,42 +3993,52 @@ Public Class MG_BasicViewer
 
         'if the z is filtered then do not draw and clear the points
         If mCurMotionRec.FilterZ Then
-            mPoints.Clear()
+            mPoints2D.Clear()
             Return
         End If
 
-        'Create a display list using any existing points
-        If ToolLayers.TryGetValue(mCurMotionRec.Tool, toolLayer) Then
-            'If we change the tool color we need to make sure we set the tool layer.
-            If MotionColorByMotionType Then
-                mCurMotionRec.DrawColor = toolLayer.Color
-            End If
-            If toolLayer.Hidden Then
-                LineEnd4D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
-                mPoints.Clear()
-                Return
+        If DrawMotionWithDefaultColor Then
+            mCurMotionRec.DrawColor = MotionColor_Default
+        Else
+            'Create a display list using any existing points
+            If ToolLayers.TryGetValue(mCurMotionRec.Tool, toolLayer) Then
+                'If we change the tool color we need to make sure we set the tool layer.
+                If Not MotionColorByMotionType Then
+                    mCurMotionRec.DrawColor = toolLayer.Color
+                End If
+                If toolLayer.Hidden Then
+                    LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z)
+                    mPoints2D.Clear()
+                    Return
+                End If
             End If
         End If
 
 
         If mCurMotionRec.Rotate Then
-            FourthAxis = mCurMotionRec.NewRotaryPos
-            ArcSegmentCount = CInt(Int((mCurMotionRec.Zpos / mLongside) * 90) * mArcQuality)
+            ArcSegmentCount = CInt(Int((mCurMotionRec.XYZpos.Z / mLongside) * 90) * mArcQuality)
         End If
 
         Select Case mCurMotionRec.MotionType
             Case Motion.RAPID
                 mCurMotionColor = MotionColor_Rapid
-                If DrawRapidLines Or mGfxIndex = 0 Then
-                    If mCurMotionRec.Rotate Then
-                        DrawRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Zpos, mCurMotionRec.Zold, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+
+                If mCurMotionRec.Rotate Then
+                    If DrawRapidLines Then
+                        DrawRotaryArc(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZold.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZpos.Z, mCurMotionRec.XYZold.Z, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
                     Else
+                        FourthAxis = mCurMotionRec.NewRotaryPos
+                        DrawSinglePoint3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z)
+                    End If
+                Else
+                    If DrawRapidLines Then
+                        Line3D(mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZold.Z, mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZold.Z)
                         If mDrawDogLeg Then
                             CalculateDogLegMotion(xleg1, yleg1, zleg1, xleg2, yleg2, zleg2)
-                            LineEnd4D(xleg1, yleg1, zleg1)
-                            LineEnd4D(xleg2, yleg2, zleg2)
+                            LineEnd3D(xleg1, yleg1, zleg1)
+                            LineEnd3D(xleg2, yleg2, zleg2)
                         End If
-                        LineEnd4D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+                        LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z)
                     End If
                 End If
 
@@ -2997,14 +4046,15 @@ Public Class MG_BasicViewer
                 'Draw a rapid blip if required
                 If DrawRapidPoints Then
                     'Set the last point
-                    LineEnd4D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
-                    mPoints.Clear()
+                    LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z)
                     DrawBlip(mLastPos)
-                    CreateDisplayListItem(DashStyle.Solid)
+                    CreateDisplayListItem(DashStyle.Solid, False)
                 End If
+
 
             Case Motion.HOLE_I, Motion.HOLE_R
                 If DrawRapidLines Then
+                    mCurMotionColor = MotionColor_Rapid
                     If mDrawDogLeg Then
                         CalculateDogLegMotion(xleg1, yleg1, zleg1, xleg2, yleg2, zleg2)
                     End If
@@ -3012,30 +4062,27 @@ Public Class MG_BasicViewer
                     'A rotary move is on the drill cycle line
                     If mCurMotionRec.Rotate Then
                         If mCurMotionRec.MotionType = Motion.HOLE_I Then 'Return to inital Z
-                            DrawRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.DrillClear, mCurMotionRec.DrillClear, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+                            DrawRotaryArc(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZold.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZold.Y, mCurMotionRec.DrillClear, mCurMotionRec.DrillClear, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
                         Else
-                            DrawRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Rpoint, mCurMotionRec.Rpoint, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+                            DrawRotaryArc(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZold.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZold.Y, mCurMotionRec.Rpoint, mCurMotionRec.Rpoint, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
                         End If
-                        LineEnd4D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Rpoint)
-
+                        LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.Rpoint)
                     Else
 
-                        'Dog-leg hole positioning
+                        'hole positioning
                         If mCurMotionRec.MotionType = Motion.HOLE_I Then 'Return to inital Z
-                            'Dog-leg
-                            Line3D(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.DrillClear)
+                            Line3D(mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZold.Z, mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.DrillClear)
                             If mDrawDogLeg Then
-                                'Line3D(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.DrillClear, xleg2, yleg2, mCurMotionRec.DrillClear)
-                                'LineEnd4D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.DrillClear)
-                                LineEnd4D(xleg2, yleg2, mCurMotionRec.DrillClear)
+                                LineEnd3D(xleg2, yleg2, mCurMotionRec.DrillClear)
                             End If
-                            LineEnd4D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Rpoint)
+                            LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.DrillClear)
+                            LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.Rpoint)
                         Else
-                            Line3D(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Rpoint)
+                            Line3D(mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZold.Z, mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.DrillClear)
                             If mDrawDogLeg Then
-                                LineEnd4D(xleg2, yleg2, mCurMotionRec.Rpoint)
+                                LineEnd3D(xleg2, yleg2, mCurMotionRec.Rpoint)
                             End If
-                            LineEnd4D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Rpoint)
+                            LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.Rpoint)
                         End If
                     End If
                 End If
@@ -3043,52 +4090,68 @@ Public Class MG_BasicViewer
                 CreateDisplayListItem(DashStyle.Dash) 'Draw any existing lines
                 'Draw the hole line
                 mCurMotionColor = MotionColor_Line
-                Line3D(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Rpoint, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+                If DrawRapidPoints Then
+                    LineEnd3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.Rpoint)
+                    DrawBlipTriangle(mLastPos)
+                    CreateDisplayListItem(DashStyle.Solid, False)
+                End If
+
+                'Drilling from R point
+                Line3D(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.Rpoint, mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z)
                 If DrawRapidPoints Then 'Draw a small circle
                     CreateDisplayListItem(DashStyle.Solid) 'Draw any existing lines
                     ArcSegmentCount = 8
-                    PolyArc(mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos,
-                                                mCurMotionRec.Xpos + mBlipSize,
-                                                mCurMotionRec.Xpos + mBlipSize,
-                                                mCurMotionRec.Ypos, mCurMotionRec.Ypos,
-                                                mCurMotionRec.Zpos, mCurMotionRec.Zpos,
-                                                mBlipSize, 0, ONE_RADIAN, -1, 0)
+                    Dim r = mBlipSize / mMasterGfxAdjustScale
+                    DrawPolyArc(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z,
+                                                mCurMotionRec.XYZpos.X + r,
+                                                mCurMotionRec.XYZpos.X + r,
+                                                mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Y,
+                                                mCurMotionRec.XYZpos.Z, mCurMotionRec.XYZpos.Z,
+                                                r, 0, ONE_RADIAN, -1, mCurMotionRec.ArcPlane)
                 End If
 
             Case Motion.LINE
                 mCurMotionColor = MotionColor_Line
                 If mCurMotionRec.Rotate Then
-                    DrawRotaryArc(mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Zpos, mCurMotionRec.Zold, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
+                    DrawRotaryArc(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZold.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZpos.Z, mCurMotionRec.XYZold.Z, mCurMotionRec.OldRotaryPos, mCurMotionRec.NewRotaryPos, mCurMotionRec.RotaryDir)
                 Else
-                    Line3D(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold, mCurMotionRec.Xpos, mCurMotionRec.Ypos, mCurMotionRec.Zpos)
+                    Line3D(mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZold.Z, mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z)
                 End If
             Case Motion.CCARC
                 mCurMotionColor = MotionColor_ArcCCW
-                ArcSegmentCount = CInt(Int((mCurMotionRec.Rad / mViewRect.Width) * 360) * mArcQuality)
-                PolyArc(mCurMotionRec.Xcentr, mCurMotionRec.Ycentr, mCurMotionRec.Zcentr, mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Zpos, mCurMotionRec.Zold, mCurMotionRec.Rad, mCurMotionRec.Sang, mCurMotionRec.Eang, 1, mCurMotionRec.ArcPlane)
+                DrawPolyArc(mCurMotionRec.XYZcenter.X, mCurMotionRec.XYZcenter.Y, mCurMotionRec.XYZcenter.Z, mCurMotionRec.XYZpos.X, mCurMotionRec.XYZold.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZpos.Z, mCurMotionRec.XYZold.Z, mCurMotionRec.Rad, mCurMotionRec.Sang, mCurMotionRec.Eang, 1, mCurMotionRec.ArcPlane)
             Case Motion.CWARC
                 mCurMotionColor = MotionColor_ArcCW
-                ArcSegmentCount = CInt(Int((mCurMotionRec.Rad / mViewRect.Width) * 360) * mArcQuality)
-                PolyArc(mCurMotionRec.Xcentr, mCurMotionRec.Ycentr, mCurMotionRec.Zcentr, mCurMotionRec.Xpos, mCurMotionRec.Xold, mCurMotionRec.Ypos, mCurMotionRec.Yold, mCurMotionRec.Zpos, mCurMotionRec.Zold, mCurMotionRec.Rad, mCurMotionRec.Sang, mCurMotionRec.Eang, -1, mCurMotionRec.ArcPlane)
+                DrawPolyArc(mCurMotionRec.XYZcenter.X, mCurMotionRec.XYZcenter.Y, mCurMotionRec.XYZcenter.Z, mCurMotionRec.XYZpos.X, mCurMotionRec.XYZold.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZpos.Z, mCurMotionRec.XYZold.Z, mCurMotionRec.Rad, mCurMotionRec.Sang, mCurMotionRec.Eang, -1, mCurMotionRec.ArcPlane)
         End Select
+
         CreateDisplayListItem(DashStyle.Solid)
+
+
         'Debug.Print("mDisplayLists.Count " & mDisplayLists.Count.ToString)
     End Sub
 
     'Draw un-rotated rectangle as a rapid point indication.   
-    Private Sub DrawBlip(ByVal p As PointF)
-        mPoints.Clear()
+    Private Sub DrawBlip(p As PointF)
+        mPoints2D.Clear()
         With p
-            Line(.X - mBlipSize, .Y - mBlipSize, .X + mBlipSize, .Y - mBlipSize)
-            LineEnd(.X + mBlipSize, .Y + mBlipSize)
-            LineEnd(.X - mBlipSize, .Y + mBlipSize)
-            LineEnd(.X - mBlipSize, .Y - mBlipSize)
-            LineEnd(.X, .Y)
+            Line2D(.X - mBlipSize, .Y - mBlipSize, .X + mBlipSize, .Y - mBlipSize)
+            AddLineEndpoint(.X + mBlipSize, .Y + mBlipSize)
+            AddLineEndpoint(.X - mBlipSize, .Y + mBlipSize)
+            AddLineEndpoint(.X - mBlipSize, .Y - mBlipSize)
+            AddLineEndpoint(.X, .Y)
         End With
     End Sub
-
-    Public Overloads Sub Redraw(ByVal allSiblings As Boolean)
-        If allSiblings AndAlso MG_BasicViewer.mAll_Siblings.Count > 0 Then
+    Private Sub DrawBlipTriangle(p As PointF)
+        mPoints2D.Clear()
+        With p
+            Line2D(.X, .Y, .X + mBlipSize, .Y + mBlipSize)
+            AddLineEndpoint(.X - mBlipSize, .Y + mBlipSize)
+            AddLineEndpoint(.X, .Y)
+        End With
+    End Sub
+    Public Overloads Sub Redraw(allSiblings As Boolean)
+        If allSiblings AndAlso mAll_Siblings.Count > 0 Then
             For Each sib As MG_BasicViewer In MyNeighborhood
                 If sib.Visible Then
                     sib.CreateDisplayListsAndDraw()
@@ -3099,24 +4162,82 @@ Public Class MG_BasicViewer
         End If
     End Sub
 
-    Public Sub FindExtents()
+    Private Shared mExtentX3d(1) As Single
+    Private Shared mExtentY3d(1) As Single
+    Private Shared mExtentZ3d(1) As Single
+    Private Shared mExtentLongest As Single
+    Public Sub CalculateToolpath3DExtents()
+
+        'If Not Visible Then Return
+        If AllMotionRecords.Count = 0 Then Return
+        Const smallFloat As Single = 0.1
+
+        mExtentX3d(0) = smallFloat
+        mExtentX3d(1) = -smallFloat
+        mExtentY3d(0) = smallFloat
+        mExtentY3d(1) = -smallFloat
+        mExtentZ3d(0) = smallFloat
+        mExtentZ3d(1) = -smallFloat
+        Dim tempMatrix = mViewMatrix
+
+        mViewMatrix = Matrix44.Identity()
+        mViewMatrix *= mRotaryMatrix
+
+        SetDrawDelegates(enDrawMethod.INIT)
+        mArcQuality = FIXED_FINE_QUALITY
+        mDisplayLists3D.Init(mRotaryVector, RotaryDirection, mMasterGfxAdjustScale)
+
+        CreateDisplayListsFromMotionRecords()
+
+        For Each dl In mDisplayLists3D.DisplayList
+            For Each ex In dl.VectorList3D
+                mExtentX3d(0) = Math.Min(mExtentX3d(0), ex.X)
+                mExtentX3d(1) = Math.Max(mExtentX3d(1), ex.X)
+                mExtentY3d(0) = Math.Min(mExtentY3d(0), ex.Y)
+                mExtentY3d(1) = Math.Max(mExtentY3d(1), ex.Y)
+                mExtentZ3d(0) = Math.Min(mExtentZ3d(0), ex.Z)
+                mExtentZ3d(1) = Math.Max(mExtentZ3d(1), ex.Z)
+            Next
+        Next
+        'I need to examine the extents and adjust the 
+        mExtentLongest = 0
+        mExtentLongest = Math.Max(mExtentLongest, Math.Abs(mExtentX3d(0)))
+        mExtentLongest = Math.Max(mExtentLongest, Math.Abs(mExtentX3d(1)))
+        mExtentLongest = Math.Max(mExtentLongest, Math.Abs(mExtentY3d(0)))
+        mExtentLongest = Math.Max(mExtentLongest, Math.Abs(mExtentY3d(1)))
+        mExtentLongest = Math.Max(mExtentLongest, Math.Abs(mExtentZ3d(0)))
+        mExtentLongest = Math.Max(mExtentLongest, Math.Abs(mExtentZ3d(1)))
+
+        mExtentLongest = Math.Max(mExtentLongest, smallFloat)
+        '/ mMasterGfxAdjustScale
+        mExtentCenter.X = (mExtentX3d(0) + mExtentX3d(1)) / 2.0
+        mExtentCenter.Y = (mExtentY3d(0) + mExtentY3d(1)) / 2.0
+        mExtentCenter.Z = (mExtentZ3d(0) + mExtentZ3d(1)) / 2.0
+        FourthAxis = 0
+        mViewMatrix = tempMatrix 'Restore the matrix to the view after calculating
+
+        mArcQuality = VARIABLE_QUALITY
+        SetDrawDelegates(enDrawMethod.DRAW)
+    End Sub
+
+    Public Sub FindViewExtents()
         If Not Visible Then Return
-        If MotionRecords.Count = 0 Then Return
+        'If AllMotionRecords.Count = 0 Then Return
         Dim sw As New Stopwatch
         sw.Start()
-        mExtentX(0) = Single.MaxValue
-        mExtentX(1) = Single.MinValue
-        mExtentY(0) = Single.MaxValue
-        mExtentY(1) = Single.MinValue
+        mExtentX(0) = -1.0F
+        mExtentX(1) = 1.0F
+        mExtentY(0) = -1.0F
+        mExtentY(1) = 1.0F
 
-        Dim drawRapidPointsStatus As Boolean = DrawRapidPoints
-        DrawRapidPoints = False 'Disable rapid points for speed
-        CreateDisplayLists()
+        SetViewMatrix3D()
+
+        CreateDisplayListsFromMotionRecords()
+
         CreateLimitsBox()
-        DrawRapidPoints = drawRapidPointsStatus
 
-        For Each l As clsDisplayList In mLimitsDisplayLists
-            For Each p As PointF In l.Points
+        For Each l As clsDisplayList2D In mLimitsDisplayLists
+            For Each p As PointF In l.Points2d
                 mExtentX(0) = Math.Min(mExtentX(0), p.X)
                 mExtentX(1) = Math.Max(mExtentX(1), p.X)
                 mExtentY(0) = Math.Min(mExtentY(0), p.Y)
@@ -3124,14 +4245,16 @@ Public Class MG_BasicViewer
             Next
         Next
 
-        If MotionRecords.Count > 0 Then
-            For Each l As clsDisplayList In mDisplayLists
-                For Each p As PointF In l.Points
-                    mExtentX(0) = Math.Min(mExtentX(0), p.X)
-                    mExtentX(1) = Math.Max(mExtentX(1), p.X)
-                    mExtentY(0) = Math.Min(mExtentY(0), p.Y)
-                    mExtentY(1) = Math.Max(mExtentY(1), p.Y)
-                Next
+        If AllMotionRecords.Count > 0 Then
+            For Each l As clsDisplayList2D In mDisplayLists2D
+                If l.Selectable Then
+                    For Each p As PointF In l.Points2d
+                        mExtentX(0) = Math.Min(mExtentX(0), p.X)
+                        mExtentX(1) = Math.Max(mExtentX(1), p.X)
+                        mExtentY(0) = Math.Min(mExtentY(0), p.Y)
+                        mExtentY(1) = Math.Max(mExtentY(1), p.Y)
+                    Next
+                End If
             Next
         Else
             mExtentX(0) = -1.0F
@@ -3139,6 +4262,7 @@ Public Class MG_BasicViewer
             mExtentY(0) = -1.0F
             mExtentY(1) = 1.0F
         End If
+
 
         sw.Stop()
 
@@ -3150,35 +4274,85 @@ Public Class MG_BasicViewer
         mExtentRectangle.Height = mExtentY(1) - mExtentY(0)
         mExtentRectangle.Inflate(mExtentRectangle.Width * 0.01F, mExtentRectangle.Height * 0.01F)
 
+
         If mExtentRectangle.Width > 0 AndAlso mExtentRectangle.Height > 0 Then
+            CreateGridInMachineUnits()
+            If mExtentRectangle.Width < 0.0001 Then
+                mExtentRectangle.Width = 0.001
+            End If
+
+            If mExtentRectangle.Height < 0.0001 Then
+                mExtentRectangle.Height = 0.001
+            End If
             mViewRect.Inflate(mExtentRectangle.Width * 0.01F, mViewRect.Height * 0.01F)
             mViewRect = mExtentRectangle
             AdjustAspect()
         End If
+
+        FourthAxis = 0
+        SaveView()
+        SetAllRotatePointToCenter()
     End Sub
 
-    Private Sub CreateDisplayLists()
-        mDisplayLists.Clear()
-        mPoints.Clear()
-        If MotionRecords.Count = 0 Then
-            Return
+    Private Sub CreateDisplayListsFromMotionRecords()
+        mDisplayLists2D.Clear()
+        mToolDiaDisplayLists.Clear()
+        mToolCompDisplayLists.Clear()
+        mUserDisplayLists.Clear()
+        mPoints2D.Clear()
+
+        If AllMotionRecords.Count = 0 Then
+            Exit Sub
         End If
 
-        If mRangeEnd > MotionRecords.Count - 1 Then
-            mRangeEnd = MotionRecords.Count - 1
+        If mRangeEnd > AllMotionRecords.Count - 1 Then
+            mRangeEnd = AllMotionRecords.Count - 1
         End If
         Try
-            mCurMotionRec = MotionRecords(mRangeStart)
+            mCurMotionRec = AllMotionRecords(mRangeStart)
+            mMotRecIdx = 0
             If mCurMotionRec.Visible Then
-                Point3D(mCurMotionRec.Xold, mCurMotionRec.Yold, mCurMotionRec.Zold)
+                DrawSinglePoint3D(mCurMotionRec.XYZold.X, mCurMotionRec.XYZold.Y, mCurMotionRec.XYZold.Z)
+                CreateDisplayListItem(DashStyle.Solid, False)
             End If
-            For mGfxIndex = mRangeStart To mRangeEnd
-                mCurMotionRec = MotionRecords(mGfxIndex)
-                If mCurMotionRec.Visible Then
-                    DrawMotionRecord() 'Draws geometry
+            For mMotRecIdx = 0 To mAllMotionRecords.Count - 1
+                mCurMotionRec = AllMotionRecords(mMotRecIdx)
+                If mMotRecIdx >= mRangeStart AndAlso mMotRecIdx <= mRangeEnd Then
+                    If mCurMotionRec.Visible Then
+                        If drawMethod = enDrawMethod.INIT Then
+                            mDisplayLists3D.AddList(mCurMotionRec)
+                        End If
+                        DrawMotionRecord() 'Draws geometry
+                        If DrawToolDia AndAlso mCurMotionRec.ToolDia > 0 Then
+                            DrawToolCircle(mCurMotionRec.ToolDia)
+                        End If
+                    End If
                 End If
             Next
-
+            For Each ur In mUserMotionRecords
+                Select Case ur.GraphicsType
+                    Case UserGraphicsType.LINE
+                        Line3D(ur.stVec.X, ur.stVec.Y, ur.stVec.Z, ur.endVec.X, ur.endVec.Y, ur.endVec.Z)
+                        CreateUserPath(ur.DrawColor, DashStyle.Solid)
+                    Case UserGraphicsType.CCARC
+                        DrawPolyArc(ur.ctrVec.X, ur.ctrVec.Y, ur.ctrVec.Z,
+                                    ur.endVec.X, ur.stVec.X,
+                                    ur.endVec.Y, ur.stVec.Y,
+                                    ur.endVec.Z, ur.stVec.Z,
+                                    ur.Rad, ur.ArcSang, ur.ArcEang, 1, ur.ArcPlane)
+                        CreateUserPath(ur.DrawColor, DashStyle.Solid)
+                    Case UserGraphicsType.CWARC
+                        DrawPolyArc(ur.ctrVec.X, ur.ctrVec.Y, ur.ctrVec.Z,
+                                    ur.endVec.X, ur.stVec.X,
+                                    ur.endVec.Y, ur.stVec.Y,
+                                    ur.endVec.Z, ur.stVec.Z,
+                                    ur.Rad, ur.ArcSang, ur.ArcEang, 1, ur.ArcPlane)
+                        CreateUserPath(ur.DrawColor, DashStyle.Solid)
+                    Case UserGraphicsType.POINT
+                        Point3dDraw(ur.stVec.X, ur.stVec.Y, ur.stVec.Z)
+                        CreateUserPath(ur.DrawColor, DashStyle.Solid)
+                End Select
+            Next
         Catch ex As Exception
             If mCurMotionRec IsNot Nothing Then
                 Throw New DisplayException(ex.Message, mCurMotionRec.Codestring)
@@ -3189,34 +4363,133 @@ Public Class MG_BasicViewer
     End Sub
 
     Private Sub DrawDisplayLists()
-#If DEBUG Then
-        mStopWatch = New Stopwatch
-        mStopWatch.Start()
-#End If
-        CreateWcs()
+        'PrepareMatrix()
         CreateLimitsBox()
-
-        SetInViewStatus(mViewRect)
-        mGfx.Clear(BackColor)
+        SetInViewStatus(Me.mViewRect)
+        CreateGridInMachineUnits()
+        CreateWcs()
+        mGfx.Clear(Me.BackColor)
         DrawListsToGraphics(mGfx)
+        If DrawFeedRates Or DrawCutterComp Then
+            DrawSpeedsFeedsToGraphics(mGfx, DrawFeedRates, DrawCutterComp)
+        End If
         mGfxBuff.Render()
-        ViewManipMode = ViewManipMode
-#If DEBUG Then
-        mStopWatch.Stop()
-        DrawTextOverlay(mStopWatch.Elapsed.ToString)
-#End If
+        Me.ViewManipMode = Me.ViewManipMode
     End Sub
 
     Private Sub CreateDisplayListsAndDraw()
         If Not Visible Then Return
-        mSelectionHitIndices.Clear()
-        CreateDisplayLists()
+        If Not isInitialized Then
+            Init()
+        End If
+        mDisplayLists2DSelectionIndices.Clear()
+        CreateDisplayListsFromMotionRecords()
         DrawDisplayLists()
     End Sub
 
+    Public Function ExtentsToString() As String
+        Return String.Format("minX{0} maxX{1} minY{2} maxY{3} minZ{4} maxZ{5}", mExtentX3d(0), mExtentX3d(1), mExtentY3d(0), mExtentY3d(1), mExtentZ3d(0), mExtentZ3d(1))
+    End Function
+
+
+    Private Sub CreateGridInMachineUnits(Optional spacing As Single = 1.0F)
+        Dim x, y As Single
+        Dim x1, y1, x2, y2 As Single
+        mGridDisplayLists.Clear()
+        mPoints2D.Clear()
+        If Not DrawGrid Then Return
+        x1 = mExtentX3d(0) / mMasterGfxAdjustScale
+        x2 = mExtentX3d(1) / mMasterGfxAdjustScale
+        y1 = mExtentY3d(0) / mMasterGfxAdjustScale
+        y2 = mExtentY3d(1) / mMasterGfxAdjustScale
+        Dim unit As Single = 1
+        Dim unitAdjustment As Single
+        'Dim detents(5) As Single
+
+        If mMachineUnits = MachineUnits.ENGLISH Then
+            'detents(0) = (1 / 32)
+            'detents(1) = (1 / 16)
+            'detents(2) = (1 / 8)
+            'detents(3) = (1 / 4)
+            'detents(4) = (1 / 2)
+            'detents(5) = 1
+            unit = (1 / 32) * mMasterGfxAdjustScale
+            unitAdjustment = 1.0F
+        Else
+            'detents(0) = 0.0393701F
+            'detents(1) = 0.0393701F * 10
+            'detents(2) = 0.0393701F * 100
+            'detents(3) = 0.0393701F * 1000
+            'detents(4) = 0.0393701F * 10000
+            'detents(5) = 0.0393701F * 100000
+            unit = 0.0393701F
+            unitAdjustment = 25.4F
+        End If
+
+        Dim maxgrid As Single = Math.Max((mViewRect.Width) / mMasterGfxAdjustScale, (mViewRect.Height) / mMasterGfxAdjustScale)
+        Dim screenSteps As Single = maxgrid / 10
+
+        'Dim det As Single = detents.First
+        'Dim bestDetent As Single = detents.First
+        'Dim deviation As Single = screenSteps Mod det
+        'For r As Integer = 1 To detents.Count - 1
+        '    det = detents(r)
+        '    If screenSteps Mod det < deviation Then
+        '        bestDetent = det
+        '    End If
+        'Next
+        spacing = (screenSteps - (screenSteps Mod unit))
+
+        If spacing = 0 Then
+            If mMachineUnits = MachineUnits.ENGLISH Then
+                spacing = (1 / 32) * mMasterGfxAdjustScale
+            Else
+                spacing = 0.0393701F
+            End If
+        End If
+
+        'Debug.Print((spacing / unitAdjustment))
+        x1 += spacing * Math.Sign(mExtentX3d(0))
+        x2 += spacing * Math.Sign(mExtentX3d(1))
+        y1 += spacing * Math.Sign(mExtentY3d(0))
+        y2 += spacing * Math.Sign(mExtentY3d(1))
+
+
+        Dim stp = spacing * Math.Sign(mExtentY3d(0))
+        y -= stp
+        Do While y > y1
+            Line3D(x1, y, 0, x2, y, 0)
+            CreateGridPath()
+            y -= spacing
+        Loop
+
+        stp = spacing * Math.Sign(mExtentY3d(1))
+        y += stp
+        Do While y < y2
+            Line3D(x1, y, 0, x2, y, 0)
+            CreateGridPath()
+            y += spacing
+        Loop
+
+        stp = spacing * Math.Sign(mExtentX3d(0))
+        x -= stp
+        Do While x > x1
+            Line3D(x, y1, 0, x, y2, 0)
+            CreateGridPath()
+            x -= spacing
+        Loop
+
+        stp = spacing * Math.Sign(mExtentX3d(1))
+        x += stp
+        Do While x < x2
+            Line3D(x, y1, 0, x, y2, 0)
+            CreateGridPath()
+            x += spacing
+        Loop
+    End Sub
     Private Sub CreateLimitsBox()
         mLimitsDisplayLists.Clear()
-        mPoints.Clear()
+        mPoints2D.Clear()
         If Not DrawAxisLimits Then Return
 
         'X=0,1
@@ -3230,95 +4503,219 @@ Public Class MG_BasicViewer
         LineEnd3D(Limits(0), Limits(3), Limits(4))
         LineEnd3D(Limits(0), Limits(2), Limits(4))
         LineEnd3D(Limits(0), Limits(2), Limits(5))
-        CreateLimitsPath()
+        Me.CreateLimitsPath()
 
         Line3D(Limits(0), Limits(2), Limits(4), Limits(1), Limits(2), Limits(4))
         LineEnd3D(Limits(1), Limits(2), Limits(5))
-        CreateLimitsPath()
+        Me.CreateLimitsPath()
         Line3D(Limits(0), Limits(3), Limits(4), Limits(1), Limits(3), Limits(4))
         LineEnd3D(Limits(1), Limits(3), Limits(5))
-        CreateLimitsPath()
+        Me.CreateLimitsPath()
         Line3D(Limits(1), Limits(2), Limits(4), Limits(1), Limits(3), Limits(4))
-        CreateLimitsPath()
+        Me.CreateLimitsPath()
 
     End Sub
 
-    Private Sub CreateWcs()
+    Private Sub DrawToolCircle(toolDia As Double)
+        mPoints2D.Clear()
+        'FourthAxis = 0
+
         If Not Visible Then Return
+
+        'ArcSegmentCount = 8
+        If toolDia = 0 Then
+            toolDia = mBlipSize
+        End If
+        Dim r = toolDia / 2
+        DrawPolyArc(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z,
+                                                mCurMotionRec.XYZpos.X + r, mCurMotionRec.XYZpos.X + r,
+                                                mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Y,
+                                                mCurMotionRec.XYZpos.Z, mCurMotionRec.XYZpos.Z,
+                                                r, 0, ONE_RADIAN, -1, mCurMotionRec.ArcPlane)
+        CreateToolDiaPath(Color.Gray, DashStyle.Solid)
+    End Sub
+
+    Private Sub DrawCutterCompIndicator()
+        mPoints2D.Clear()
+        'FourthAxis = 0
+
+        If Not Visible Then Return
+        Dim m = mCurMotionRec
+
+        ''ArcSegmentCount = 8
+        'Dim r = toolDia / 2
+        'DrawPolyArc(mCurMotionRec.XYZpos.X, mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Z,
+        '                                        mCurMotionRec.XYZpos.X + r,
+        '                                        mCurMotionRec.XYZpos.X + r,
+        '                                        mCurMotionRec.XYZpos.Y, mCurMotionRec.XYZpos.Y,
+        '                                        mCurMotionRec.XYZpos.Z, mCurMotionRec.XYZpos.Z,
+        '                                        r, 0, ONE_RADIAN, -1, mCurMotionRec.ArcPlane)
+        Dim s = m.XYZold
+        Dim e = m.XYZpos
+        'Dim midpoint As Vector3
+
+        'If p.Points2d.Length = 2 Then
+        '    midpoint = (s + e) / 2
+        'Else
+        '    midpoint.X = p.Points2d(p.Points2d.Length \ 2).X
+        '    midpoint.Y = p.Points2d(p.Points2d.Length \ 2).Y
+        'End If
+
+        'Dim v As Vector2 = (s - e)
+        'If v.Length < 0.0001 Then Return
+
+        'v.Normalise()
+        'v = v * (mBlipSize * 4)
+
+        'If Math.Abs((e - s).Length) < mBlipSize * 8 Then Return
+
+        'Dim comp = mAllMotionRecords(p.MotionIndex).Comp
+        'sp = New PointF(midpoint.X, midpoint.Y)
+
+        'Debug.Print(mArcBall.ActiveMatrix.Up.Z.ToString)
+
+        'If comp = CutterComp.OFF Or comp = CutterComp.RIGHT Then
+        '    Rotate2D(40.0, v, rx, ry)
+        '    ep = New PointF(midpoint.X + rx, midpoint.Y + ry)
+        '    g.DrawLine(mCurPen, sp, ep)
+        'End If
+
+        'If comp = CutterComp.OFF Or comp = CutterComp.LEFT Then
+        '    Rotate2D(-40.0, v, rx, ry)
+        '    ep = New PointF(midpoint.X + rx, midpoint.Y + ry)
+        '    g.DrawLine(mCurPen, sp, ep)
+        'End If
+
+        CreateToolCompPath()
+    End Sub
+
+    Public Sub RemoveUserGraphics(Optional id As String = "*")
+        If id = "*" Then
+            mUserMotionRecords.Clear()
+        Else
+            mUserMotionRecords.RemoveAll(Function(i) i.ID = id)
+        End If
+    End Sub
+    Public Sub AppendUserGraphics(u As clsUserRecord)
+        mUserMotionRecords.Add(u)
+    End Sub
+
+    Private Sub CreateWcs()
         mWcsDisplayLists.Clear()
-        mPoints.Clear()
+        mPoints2D.Clear()
         FourthAxis = 0
 
+        If Not Visible Then Return
+        If mExtentLongest = 0 Then
+            mExtentLongest = 2
+        End If
 
+
+        mExtentX(0) = -mExtentLongest
+        mExtentX(1) = mExtentLongest
+        mExtentY(0) = -mExtentLongest
+        mExtentY(1) = mExtentLongest
+
+
+        ' mExtentX =
+        Dim prescale = (1 / mScaleToReal * mAxisIndicatorScale) / mMasterGfxAdjustScale
         If DrawAxisLines Then
             'Y axis line
-            Line3D(0.0F, 0.0F, 0.0F, 0.0F, -1000, 0)
-            CreateWcsPath(Color.Gray, DashStyle.Custom)
-            Line3D(0.0F, 0.0F, 0.0F, 0.0F, 1000, 0)
-            CreateWcsPath(Color.Gray, DashStyle.Custom)
+            LineScaled3D(0.0F, 0.0F, 0.0F, 0.0F, -mExtentLongest, 0, 1)
+            Me.CreateWcsPath(Color.Gray, DashStyle.Custom)
+            LineScaled3D(0.0F, 0.0F, 0.0F, 0.0F, mExtentLongest, 0, 1)
+            Me.CreateWcsPath(Color.Gray, DashStyle.Custom)
 
             'X axis line
-            Line3D(0.0F, 0.0F, 0.0F, 1000, 0.0F, 0)
-            CreateWcsPath(Color.Gray, DashStyle.Custom)
-            Line3D(0.0F, 0.0F, 0.0F, -1000, 0.0F, 0)
-            CreateWcsPath(Color.Gray, DashStyle.Custom)
+            LineScaled3D(0.0F, 0.0F, 0.0F, -mExtentLongest, 0.0F, 0, 1)
+            Me.CreateWcsPath(Color.Gray, DashStyle.Custom)
+            LineScaled3D(0.0F, 0.0F, 0.0F, mExtentLongest, 0.0F, 0, 1)
+            Me.CreateWcsPath(Color.Gray, DashStyle.Custom)
 
             'Z Axis line
-            Line3D(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1000)
-            CreateWcsPath(Color.Gray, DashStyle.Custom)
-            Line3D(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, -1000)
-            CreateWcsPath(Color.Gray, DashStyle.Custom)
+            LineScaled3D(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, -mExtentLongest, 1)
+            Me.CreateWcsPath(Color.Gray, DashStyle.Custom)
+            LineScaled3D(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, mExtentLongest, 1)
+            Me.CreateWcsPath(Color.Gray, DashStyle.Custom)
         End If
 
         If DrawAxisIndicator Then
             'Axis indicators
             'X indicator
-            Line3D(0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0)
-            Line3D(1.0F, 0.0F, 0.0F, 0.9F, 0.05F, 0)
-            Line3D(1.0F, 0.0F, 0.0F, 0.9F, -0.05F, 0)
+            LineScaled3D(0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0, prescale)
+            LineScaled3D(1.0F, 0.0F, 0.0F, 0.9F, 0.05F, 0, prescale)
+            LineScaled3D(1.0F, 0.0F, 0.0F, 0.9F, -0.05F, 0, prescale)
             CreateWcsPath(Color.DarkKhaki, DashStyle.Solid)
             'Draw the letter X
-            Line3D(0.7F, 0.1F, 0.0F, 0.9F, 0.4F, 0)
+            LineScaled3D(0.7F, 0.1F, 0.0F, 0.9F, 0.4F, 0, prescale)
             CreateWcsPath(Color.DarkKhaki, DashStyle.Solid)
-            Line3D(0.9F, 0.1F, 0.0F, 0.7F, 0.4F, 0)
+            LineScaled3D(0.9F, 0.1F, 0.0F, 0.7F, 0.4F, 0, prescale)
             CreateWcsPath(Color.DarkKhaki, DashStyle.Solid)
 
             'Y indicator
-            Line3D(0.0F, 0.0F, 0, 0.0F, 1.0F, 0)
+            LineScaled3D(0.0F, 0.0F, 0, 0.0F, 1.0F, 0, prescale)
             CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
-            Line3D(0.0F, 1.0F, 0.0F, -0.05F, 0.9F, 0)
+            LineScaled3D(0.0F, 1.0F, 0.0F, -0.05F, 0.9F, 0, prescale)
             CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
-            Line3D(0.0F, 1.0F, 0.0F, 0.05F, 0.9F, 0)
+            LineScaled3D(0.0F, 1.0F, 0.0F, 0.05F, 0.9F, 0, prescale)
             CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
             'Draw the letter Y
-            Line3D(-0.2F, 0.7F, 0.0F, -0.2F, 0.85F, 0)
+            LineScaled3D(-0.2F, 0.7F, 0.0F, -0.2F, 0.85F, 0, prescale)
             CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
-            Line3D(-0.2F, 0.85F, 0.0F, -0.3F, 1.0F, 0)
+            LineScaled3D(-0.2F, 0.85F, 0.0F, -0.3F, 1.0F, 0, prescale)
             CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
-            Line3D(-0.2F, 0.85F, 0.0F, -0.1F, 1.0F, 0)
+            LineScaled3D(-0.2F, 0.85F, 0.0F, -0.1F, 1.0F, 0, prescale)
             CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
 
             'Z indicator
-            Line3D(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1)
-            Line3D(0.0F, 0.0F, 1.0F, 0.1F, 0.0F, 0.8)
+            LineScaled3D(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1, prescale)
+            LineScaled3D(0.0F, 0.0F, 1.0F, 0.1F, 0.0F, 0.8, prescale)
             CreateWcsPath(Color.DarkRed, DashStyle.Solid)
 
-            PolyArc(0.0F, 0.0F, 0.0F, 0.1F, 0.1F, 0.0F, 0.0F, 0.8F, 0.8F, 0.1F, 0.0F, ONE_RADIAN, 1, Axis.Z)
+            DrawPolyArc(0.0F, 0.0F, 0.0F, 0.1F * prescale, 0.1F * prescale, 0.0F, 0.0F, 0.8F * prescale, 0.8F * prescale, 0.1F * prescale, 0.0F, ONE_RADIAN, 1, ArcAxis.Z)
             CreateWcsPath(Color.DarkRed, DashStyle.Solid)
 
             'Draw the letter Z
-            Line3D(-0.2F, 0.0F, 0.7F, -0.4F, 0.0F, 0.7)
-            Line3D(-0.2F, 0.0F, 0.95F, -0.4F, 0.0F, 0.95)
-            Line3D(-0.2F, 0.0F, 0.95F, -0.4F, 0.0F, 0.7)
+            LineScaled3D(-0.2F, 0.0F, 0.7F, -0.4F, 0.0F, 0.7, prescale)
+            LineScaled3D(-0.2F, 0.0F, 0.95F, -0.4F, 0.0F, 0.95, prescale)
+            LineScaled3D(-0.2F, 0.0F, 0.95F, -0.4F, 0.0F, 0.7, prescale)
+            CreateWcsPath(Color.DarkRed, DashStyle.Solid)
+        End If
+
+    End Sub
+
+    Private Sub DrawWorkOffsetIndicator()
+        If DrawAxisIndicator And Visible Then
+            Dim prescale = (2 / mScaleToReal * mAxisIndicatorScale) / mMasterGfxAdjustScale
+
+            'Axis indicators
+            'X indicator
+            LineScaled3D(0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0, prescale)
+            LineScaled3D(1.0F, 0.0F, 0.0F, 0.9F, 0.05F, 0, prescale)
+            LineScaled3D(1.0F, 0.0F, 0.0F, 0.9F, -0.05F, 0, prescale)
+            CreateWcsPath(Color.DarkKhaki, DashStyle.Solid)
+
+            'Y indicator
+            LineScaled3D(0.0F, 0.0F, 0, 0.0F, 1.0F, 0, prescale)
+            CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
+            LineScaled3D(0.0F, 1.0F, 0.0F, -0.05F, 0.9F, 0, prescale)
+            CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
+            LineScaled3D(0.0F, 1.0F, 0.0F, 0.05F, 0.9F, 0, prescale)
+            CreateWcsPath(Color.DarkGreen, DashStyle.Solid)
+
+            'Z indicator
+            LineScaled3D(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1, prescale)
+            LineScaled3D(0.0F, 0.0F, 1.0F, 0.1F, 0.0F, 0.8, prescale)
             CreateWcsPath(Color.DarkRed, DashStyle.Solid)
         End If
     End Sub
+
 
     'Gathers the tools and creates ToolLayers from current colors
     Public Sub GatherToolsFromMotionRecords()
         Dim lastTool As Single
         ToolLayers.Clear()
-        For Each blk As clsMotionRecord In MotionRecords
+        For Each blk As clsMotionRecord In AllMotionRecords
             If lastTool <> blk.Tool Then
                 lastTool = blk.Tool
                 If Not ToolLayers.ContainsKey(blk.Tool) Then
@@ -3329,27 +4726,27 @@ Public Class MG_BasicViewer
             End If
         Next
         For Each sib As MG_BasicViewer In MyNeighborhood
-            If sib.Name <> Name Then
-                sib.ToolLayers = ToolLayers
+            If sib.Name <> Me.Name Then
+                sib.ToolLayers = Me.ToolLayers
             End If
         Next
     End Sub
 
     'Sets the selection based on a range
-    Public Sub SetSelectionHits(ByVal rangeLnStart As Integer, ByVal rangeLnEnd As Integer, ByVal progIndex As Integer)
+    Public Sub SetSelectionHits(ranges As List(Of Integer), pIndex As Integer)
         Dim maxHits As Integer = 0
         Dim hitIndex As Integer = 0
         mSelectionHits.Clear()
-        mSelectionHitIndices.Clear()
-        If MotionRecords.Count > 0 Then
-            For Each l As clsDisplayList In mDisplayLists
+        mDisplayLists2DSelectionIndices.Clear()
+
+        If AllMotionRecords.Count > 0 Then
+            For Each l As clsDisplayList2D In mDisplayLists2D
                 If l.InView Then
-                    If maxHits >= mMaxSelectionHits Then Exit For
-                    If MotionRecords(l.MotionIndex).Linenumber >= rangeLnStart _
-                    AndAlso MotionRecords(l.MotionIndex).Linenumber <= rangeLnEnd _
-                    AndAlso MotionRecords(l.MotionIndex).ProgIndex = progIndex Then
-                        mSelectionHits.Add(MotionRecords(l.MotionIndex))
-                        mSelectionHitIndices.Add(hitIndex)
+                    If maxHits >= MaxSelectionHits Then Exit For
+
+                    If ranges.Contains(AllMotionRecords(l.MotionIndex).Linenumber) AndAlso AllMotionRecords(l.MotionIndex).ProgIndex = pIndex Then
+                        mSelectionHits.Add(AllMotionRecords(l.MotionIndex))
+                        mDisplayLists2DSelectionIndices.Add(hitIndex)
                         maxHits += 1
                     End If
                 End If
@@ -3357,31 +4754,67 @@ Public Class MG_BasicViewer
             Next
         End If
 
-        If mSelectionHitIndices.Count > 0 Then
-            DrawAllSelectionOverlays(mSelectionHitIndices, -1)
+        If Me.mDisplayLists2DSelectionIndices.Count > 0 Then
+            DrawGraphicsOverlaysAllViews(Me.mDisplayLists2DSelectionIndices, -1)
             mLastSelectedMotionRecord = mSelectionHits(0)
             UpdateElementDetails()
         End If
 
     End Sub
 
-    'Returns the number of hits inside the referenced rectangle.
-    Private Sub GetSelectionHits(ByVal rect As RectangleF)
+
+
+    'Sets the selection based on a range
+    Public Sub SetSelectionHits(rangeLnStart As Integer, rangeLnEnd As Integer, pIndex As Integer)
+        Dim maxHits As Integer = 0
+        Dim hitIndex As Integer = 0
+        mSelectionHits.Clear()
+        mDisplayLists2DSelectionIndices.Clear()
+
+        If AllMotionRecords.Count > 0 Then
+            For Each l As clsDisplayList2D In mDisplayLists2D
+                If l.InView Then
+                    If maxHits >= MaxSelectionHits Then Exit For
+                    If AllMotionRecords(l.MotionIndex).Linenumber >= rangeLnStart _
+                    AndAlso AllMotionRecords(l.MotionIndex).Linenumber <= rangeLnEnd Then
+                        If pIndex = 0 OrElse AllMotionRecords(l.MotionIndex).ProgIndex = pIndex Then
+                            mSelectionHits.Add(AllMotionRecords(l.MotionIndex))
+                            mDisplayLists2DSelectionIndices.Add(hitIndex)
+                            maxHits += 1
+                        End If
+                    End If
+                End If
+                hitIndex += 1
+            Next
+        End If
+
+        If Me.mDisplayLists2DSelectionIndices.Count > 0 Then
+            DrawGraphicsOverlaysAllViews(Me.mDisplayLists2DSelectionIndices, -1)
+            mLastSelectedMotionRecord = mSelectionHits(0)
+            UpdateElementDetails()
+        End If
+
+    End Sub
+
+    ''' <returns>Index of first motion record</returns>
+    Private Function GetSelectionHits(rect As RectangleF) As Integer
         Dim maxHits As Integer = 0
         Dim hitIndex As Integer = 0
         Dim cadRect As New clsCadRect(rect.X, rect.Y, rect.Width, rect.Height)
         mSelectionHits.Clear()
-        mSelectionHitIndices.Clear()
-        If MotionRecords.Count > 0 Then
-            For Each l As clsDisplayList In mDisplayLists
-                If l.InView Then
+        mDisplayLists2DSelectionIndices.Clear()
+        If AllMotionRecords.Count > 0 Then
+            For Each l In mDisplayLists2D
+                If l.InView And l.Selectable Then
                     'Iterate in sets of 2 
-                    For r As Integer = 0 To l.Points.Length - 2
-                        If maxHits >= mMaxSelectionHits Then Return
-                        If cadRect.IntersectsLine(l.Points(r), l.Points(r + 1)) Then
-                            If Not mSelectionHits.Contains(MotionRecords(l.MotionIndex)) Then
-                                mSelectionHits.Add(MotionRecords(l.MotionIndex))
-                                mSelectionHitIndices.Add(hitIndex)
+                    For r As Integer = 0 To l.Points2d.Length - 2
+                        If maxHits >= MaxSelectionHits Then Exit For
+                        Dim mag = cadRect.IntersectsLine(l.Points2d(r), l.Points2d(r + 1))
+                        If mag > -1 Then
+                            Dim mr = AllMotionRecords(l.MotionIndex)
+                            If Not mSelectionHits.Contains(mr) Then
+                                mSelectionHits.Add(mr)
+                                mDisplayLists2DSelectionIndices.Add(hitIndex)
                                 maxHits += 1
                                 Exit For
                             End If
@@ -3391,11 +4824,19 @@ Public Class MG_BasicViewer
                 hitIndex += 1
             Next
         End If
-    End Sub
 
-    Private Function GetDisplayIndexFromMotionIndex(ByVal motIdx As Integer) As Integer
+        If mSelectionHits.Count > 0 Then
+            Return mSelectionHits.First.Index
+        Else
+            Return -1
+        End If
+    End Function
+
+
+
+    Private Function GetDisplayIndexFromMotionIndex(motIdx As Integer) As Integer
         Dim ret As Integer = 0
-        For Each l As clsDisplayList In mDisplayLists
+        For Each l As clsDisplayList2D In mDisplayLists2D
             If l.MotionIndex = motIdx Then
                 Return ret
                 ret += 1
@@ -3406,10 +4847,10 @@ Public Class MG_BasicViewer
 
     Public Sub SelectLastElement()
         mSelectionHits.Clear()
-        mSelectionHitIndices.Clear()
-        If MotionRecords.Count > 0 Then
-            mSelectionHits.Add(MotionRecords(RangeEnd))
-            mSelectionHitIndices.Add(mDisplayLists.Count - 1)
+        mDisplayLists2DSelectionIndices.Clear()
+        If AllMotionRecords.Count > 0 AndAlso RangeEnd > -1 Then
+            mSelectionHits.Add(AllMotionRecords(RangeEnd))
+            mDisplayLists2DSelectionIndices.Add(mDisplayLists2D.Count - 1)
         End If
     End Sub
 
@@ -3419,8 +4860,8 @@ Public Class MG_BasicViewer
         End If
     End Sub
 
-    Public Sub SetToolColor(ByVal tool As Single, ByVal clr As Color)
-        For Each mr As clsMotionRecord In MotionRecords
+    Public Sub SetToolColor(tool As Single, clr As Color)
+        For Each mr As clsMotionRecord In AllMotionRecords
             If mr.Tool = tool Then
                 mr.DrawColor = clr
             End If
@@ -3428,19 +4869,19 @@ Public Class MG_BasicViewer
     End Sub
 
     Private Sub SetAllInVeiw()
-        For Each l As clsDisplayList In mDisplayLists
-            l.InView = True
+        For Each l As clsDisplayList2D In mDisplayLists2D
+            l.InView = l.Points2d.Length > 1
         Next
     End Sub
 
 
-    Private Sub SetInViewStatus(ByVal rect As RectangleF)
+    Private Sub SetInViewStatus(rect As RectangleF)
         Dim cadRect As New clsCadRect(rect.X, rect.Y, rect.Width, rect.Height)
-        For Each l As clsDisplayList In mDisplayLists
+        For Each l As clsDisplayList2D In mDisplayLists2D
             'Iterate in sets of 2 
-            For r As Integer = 0 To l.Points.Length - 2
+            For r As Integer = 0 To l.Points2d.Length - 2
                 l.InView = False
-                If cadRect.IntersectsLine(l.Points(r), l.Points(r + 1)) Then
+                If cadRect.IntersectsLine(l.Points2d(r), l.Points2d(r + 1)) > -1 Then
                     l.InView = True
                     Exit For
                 End If
@@ -3448,166 +4889,223 @@ Public Class MG_BasicViewer
         Next
     End Sub
 
-    Private Sub ClearDisplayList()
-        mDisplayLists.Clear()
-        mPoints.Clear()
-    End Sub
-
-    Private Sub CreateDisplayListItem(ByVal drawStyle As Drawing2D.DashStyle)
-        If (mPoints.Count < 2) Then Return
-        Dim p As New clsDisplayList
+    Private Sub CreateDisplayListItem(drawStyle As DashStyle, Optional selectable As Boolean = True)
+        If (mPoints2D.Count < 1) Then Return
+        Dim p As New clsDisplayList2D
 
         With p
+            .Selectable = selectable
             If MotionColorByMotionType Then
                 .Color = mCurMotionColor
             Else
                 .Color = mCurMotionRec.DrawColor
             End If
             .DashStyle = drawStyle
-            .MotionIndex = mGfxIndex
-            .Points = mPoints.ToArray
+            .MotionIndex = mMotRecIdx
+            .Points2d = mPoints2D.ToArray
         End With
-        mDisplayLists.Add(p)
-        mPoints.Clear()
+        mDisplayLists2D.Add(p)
+        mPoints2D.Clear()
     End Sub
 
     'Limits lines and indicator
     Private Sub CreateLimitsPath()
-        Dim p As New clsDisplayList
-        If (mPoints.Count < 2) Then Return
+        Dim p As New clsDisplayList2D
+        If (mPoints2D.Count < 2) Then Return
         With p
             .Color = LimitsColor
             .DashStyle = DashStyle.Solid '(mCurMotion = Motion.RAPID)
-            .Points = mPoints.ToArray
+            .Points2d = mPoints2D.ToArray
         End With
         mLimitsDisplayLists.Add(p)
-        mPoints.Clear()
+        mPoints2D.Clear()
     End Sub
 
-    'Axis lines and indicator
-    Private Sub CreateWcsPath(ByVal clr As Color, ByVal drawStyle As Drawing2D.DashStyle)
-        Dim p As New clsDisplayList
-        If (mPoints.Count < 2) Then Return
+    Private Sub CreateGridPath()
+        Dim p As New clsDisplayList2D
+        If (mPoints2D.Count < 2) Then Return
+        With p
+            .Color = LimitsColor
+            .DashStyle = DashStyle.Solid '(mCurMotion = Motion.RAPID)
+            .Points2d = mPoints2D.ToArray
+        End With
+        mGridDisplayLists.Add(p)
+        mPoints2D.Clear()
+    End Sub
+
+    Private Sub CreateToolDiaPath(clr As Color, drawStyle As DashStyle)
+        Dim p As New clsDisplayList2D
+        If (mPoints2D.Count < 2) Then Return
         With p
             .Color = clr
             .DashStyle = drawStyle '(mCurMotion = Motion.RAPID)
-            .Points = mPoints.ToArray
+            .Points2d = mPoints2D.ToArray
+        End With
+        mToolDiaDisplayLists.Add(p)
+        mPoints2D.Clear()
+    End Sub
+
+    Private Sub CreateToolCompPath()
+        Dim p As New clsDisplayList2D
+        If (mPoints2D.Count < 2) Then Return
+        With p
+            .Color = mCurMotionColor
+            .DashStyle = DashStyle.Solid '(mCurMotion = Motion.RAPID)
+            .Points2d = mPoints2D.ToArray
+        End With
+        mToolCompDisplayLists.Add(p)
+        mPoints2D.Clear()
+    End Sub
+    Private Sub CreateUserPath(clr As Color, drawStyle As DashStyle)
+        Dim p As New clsDisplayList2D
+        'If (mPoints2D.Count < 2) Then Return
+        With p
+            .Color = clr
+            '.DashStyle = drawStyle '(mCurMotion = Motion.RAPID)
+            .Points2d = mPoints2D.ToArray
+            .Selectable = True
+            .InView = True
+
+        End With
+        mUserDisplayLists.Add(p)
+        mPoints2D.Clear()
+    End Sub
+
+
+    'Axis lines and indicator
+    Private Sub CreateWcsPath(clr As Color, drawStyle As DashStyle)
+        Dim p As New clsDisplayList2D
+        If (mPoints2D.Count < 2) Then Return
+        With p
+            .Color = clr
+            .DashStyle = drawStyle '(mCurMotion = Motion.RAPID)
+            .Points2d = mPoints2D.ToArray
         End With
         mWcsDisplayLists.Add(p)
-        mPoints.Clear()
+        mPoints2D.Clear()
     End Sub
 
-    Private Sub LineEnd(ByVal x2 As Single, ByVal y2 As Single)
+    Private Sub AddLineEndpoint(x2 As Single, y2 As Single)
         'Code was removed that checked for a line of zero length.
         'This creates a problem because it will create an uneven number of display list in each viewport.
-        mPoints.Add(mLastPos)
-        mPoints.Add(New PointF(x2, y2))
+        If mPoints2D.Count = 0 Then mPoints2D.Add(mLastPos) 'TODO
         mLastPos.X = x2
         mLastPos.Y = y2
+        mPoints2D.Add(mLastPos)
     End Sub
 
-    Private Sub Line(ByVal x1 As Single, ByVal y1 As Single, ByVal x2 As Single, ByVal y2 As Single)
-        mPoints.Add(New PointF(x1, y1))
-        mPoints.Add(New PointF(x2, y2))
+    Private Sub Line2D(x1 As Single, y1 As Single, x2 As Single, y2 As Single)
+        mPoints2D.Add(New PointF(x1, y1))
+        mPoints2D.Add(New PointF(x2, y2))
         mLastPos.X = x2
         mLastPos.Y = y2
     End Sub
 
 #End Region
 
-    Private Sub MG_BasicViewer_VisibleChanged(ByVal sender As Object, ByVal e As System.EventArgs) Handles Me.VisibleChanged
-        If Visible = False Then
+    Private Sub MG_BasicViewer_VisibleChanged(sender As Object, e As EventArgs) Handles Me.VisibleChanged
+        If Me.Visible = False Then
             'Reclaim a little memory
-            mDisplayLists.Clear()
+            Me.mDisplayLists2D.Clear()
         End If
     End Sub
 
-    Private Sub SetViewManipMode(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles mnuZoom.Click, mnuSelect.Click, mnuRotate.Click, mnuPan.Click, mnuFit.Click, mnuFence.Click
+    Private Sub SetViewManipMode(sender As System.Object, e As EventArgs) Handles mnuZoom.Click, mnuSelect.Click, mnuRotate.Click, mnuPan.Click, mnuFit.Click, mnuFence.Click, mnuSetRotate.Click, mnuMeasure.Click
         Dim tag As String = sender.GetType.GetProperty("Tag").GetValue(sender, Nothing).ToString
         Select Case tag
-            Case "Fit"
+            Case "viewFit"
                 SetView(ManipMode.FIT, My.Computer.Keyboard.ShiftKeyDown)
-            Case "Pan"
-                SetView(MG_BasicViewer.ManipMode.PAN)
-            Case "Fence"
-                SetView(MG_BasicViewer.ManipMode.FENCE)
-            Case "Zoom"
-                SetView(MG_BasicViewer.ManipMode.ZOOM)
-            Case "Rotate"
-                SetView(MG_BasicViewer.ManipMode.ROTATE)
+            Case "viewPan"
+                SetView(ManipMode.PAN)
+            Case "viewFence"
+                SetView(ManipMode.FENCE)
+            Case "viewZoom"
+                SetView(ManipMode.ZOOM)
+            Case "viewRotate"
+                SetView(ManipMode.ROTATE)
             Case "Select"
-                SetView(MG_BasicViewer.ManipMode.SELECTION)
+                SetView(ManipMode.SELECTION)
+            Case "setRotate"
+                SetView(ManipMode.SETROTATE)
+            Case "measure"
+                SetView(ManipMode.MEASURE)
         End Select
     End Sub
 
-    Public Sub SetView(ByVal cmd As MG_BasicViewer.ManipMode, Optional ByVal fitAll As Boolean = False)
-        Select Case cmd
-            Case ManipMode.FIT
-                If fitAll Then
-                    For Each Sibling As MG_BasicViewer In MyNeighborhood
-                        Sibling.FindExtents()
-                    Next
-                    Redraw(True)
-                Else
-                    FindExtents()
-                    Redraw(False)
-                End If
-                RaiseEvent OnSetViewMode(ViewManipMode)
-            Case ManipMode.PAN
-                ViewManipMode = MG_BasicViewer.ManipMode.PAN
-                RaiseEvent OnSetViewMode(ViewManipMode)
-            Case ManipMode.FENCE
-                ViewManipMode = MG_BasicViewer.ManipMode.FENCE
-                RaiseEvent OnSetViewMode(ViewManipMode)
-            Case ManipMode.ZOOM
-                ViewManipMode = MG_BasicViewer.ManipMode.ZOOM
-                RaiseEvent OnSetViewMode(ViewManipMode)
-            Case ManipMode.ROTATE
-                ViewManipMode = MG_BasicViewer.ManipMode.ROTATE
-                RaiseEvent OnSetViewMode(ViewManipMode)
-            Case ManipMode.SELECTION
-                ViewManipMode = MG_BasicViewer.ManipMode.SELECTION
-                RaiseEvent OnSetViewMode(ViewManipMode)
-        End Select
+    Public Sub SetView(cmd As ManipMode, Optional fitAll As Boolean = False)
+        If cmd = ManipMode.FIT Then
+            If fitAll Then
+                For Each Sibling As MG_BasicViewer In MyNeighborhood
+                    Sibling.FindViewExtents()
+                Next
+                Redraw(True)
+            Else
+                FindViewExtents()
+                Redraw(False)
+            End If
+        End If
+        ViewManipMode = cmd
+        RaiseEvent OnSetViewMode(cmd)
     End Sub
 
-    Private Sub NamedView(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles mnuTop.Click, mnuRight.Click, mnuIsometric.Click, mnuFront.Click
-        Select Case DirectCast(sender, System.Windows.Forms.ToolStripMenuItem).Tag.ToString
-            Case "Top"
+    Public Sub SetView(x As Single, y As Single, z As Single)
+        Pitch = x
+        Roll = y
+        Yaw = z
+        SetViewMatrix3D()
+        'FindviewExtents()
+        Redraw(False)
+    End Sub
+    Public Sub SetNamedView(name As String)
+        Select Case name
+            Case "viewTop"
                 Pitch = 0
                 Roll = 0
                 Yaw = 0
-            Case "Front"
+            Case "viewFront"
                 Pitch = 270
                 Roll = 0
-                Yaw = 360
-            Case "Right"
+                Yaw = 0
+            Case "viewRight"
                 Pitch = 270
                 Roll = 0
                 Yaw = 270
-            Case "ISO"
+            Case "viewISO"
                 Pitch = 315
                 Roll = 0
                 Yaw = 315
+            Case "viewLathe"
+                Pitch = 0
+                Roll = 90
+                Yaw = 90
         End Select
-        FindExtents()
+        SetViewMatrix3D()
+        FindViewExtents()
+        SaveView()
         Redraw(False)
     End Sub
+    Private Sub NamedView(sender As System.Object, e As EventArgs) Handles mnuTop.Click, mnuRight.Click, mnuIsometric.Click, mnuFront.Click, mnuLathe.Click
+        SetNamedView(DirectCast(sender, ToolStripMenuItem).Tag.ToString)
+    End Sub
 
-    Private Sub timerQuickPick_Tick(ByVal sender As Object, ByVal e As System.EventArgs) Handles timerQuickPick.Tick
+    Private Sub timerQuickPick_Tick(sender As Object, e As EventArgs) Handles timerQuickPick.Tick
         Static Xold As Single
         Static Yold As Single
-
-        If ViewManipMode <> ManipMode.SELECTION Then
+        If ViewManipMode <> ManipMode.SELECTION Or RMBOpen Then
             Exit Sub
         End If
+
+        If Not Me.Focused Then
+            Return
+        End If
+
         Dim notMoving As Boolean = ((Xold = mCurrentCursorPos.X) AndAlso (Yold = mCurrentCursorPos.Y))
 
         If notMoving AndAlso mSelectionHits.Count > 1 Then
-            Cursor = mSelectEtcCursor
+            Me.Cursor = Me.mSelectEtcCursor
             'Debug.Print("Quick")
         Else
-            Cursor = mSelectCursor
+            Me.Cursor = Me.mSelectCursor
             'Debug.Print("Normal")
         End If
 
@@ -3622,7 +5120,7 @@ Public Class MG_BasicViewer
         For Each hit As clsMotionRecord In mSelectionHits
             mFrmQuickPick.lstQuickPick.Items.Add(hit.Codestring)
         Next
-        mFrmQuickPick.Location = Windows.Forms.Cursor.Position
+        mFrmQuickPick.Location = Cursor.Position
         mFrmQuickPick.TopMost = True
         mFrmQuickPick.ShowDialog()
         mFrmQuickPick.Dispose()
@@ -3630,10 +5128,10 @@ Public Class MG_BasicViewer
     End Sub
 
 
-    Private Sub mFrmQuickPick_OnSingleSelect(ByVal selIdx As Integer) Handles mFrmQuickPick.OnSingleSelect
+    Private Sub mFrmQuickPick_OnSingleSelect(selIdx As Integer) Handles mFrmQuickPick.OnSingleSelect
 
         'If Me.mSelectionHitIndices.Count > 0 Then
-        DrawAllSelectionOverlays(mSelectionHitIndices, selIdx)
+        DrawGraphicsOverlaysAllViews(Me.mDisplayLists2DSelectionIndices, selIdx)
         'End If
 
         'DrawSelectionOverlay(Me.mSelectionHitIndices, selIdx)
@@ -3644,24 +5142,28 @@ Public Class MG_BasicViewer
         'Next
         ''Should behave as if the user clicked a single elementmSelectionHitIndices
         'DrawSelectionOverlay(Me.mSelectionHitIndices, selIdx)
-        RaiseEvent OnSelection(mSelectionHits, selIdx)
+        RaiseEvent OnSelection(Me.mSelectionHits, selIdx)
     End Sub
 
     'Public Function HitIndexToMotionBlock(ByVal i As Integer) As clsMotionRecord
     '    Return MotionBlocks(Me.mDisplayLists(mSelectionHitIndices(i)).MotionIndex)
     'End Function
 
-    Public Sub InitSiblingMotionBlocks(ByVal mb As List(Of clsMotionRecord))
+    Public Sub InitSiblingMotionBlocks(mb As List(Of clsMotionRecord))
         For Each Sibling As MG_BasicViewer In MyNeighborhood
-            Sibling.mMotionRecords = mb
+            Sibling.mAllMotionRecords = mb
         Next
     End Sub
-
-    Private Sub rmbView_Opening(ByVal sender As System.Object, ByVal e As System.ComponentModel.CancelEventArgs) Handles rmbView.Opening
+    Public Sub SetAllTouchDisplayMode(touch As Boolean)
+        For Each Sibling As MG_BasicViewer In MyNeighborhood
+            Sibling.TabletMode = touch
+        Next
+    End Sub
+    Private Sub rmbView_Opening(sender As System.Object, e As CancelEventArgs) Handles rmbView.Opening
         mRmbMenuOpen = True
     End Sub
 
-    Private Sub rmbView_Closed(ByVal sender As System.Object, ByVal e As System.Windows.Forms.ToolStripDropDownClosedEventArgs) Handles rmbView.Closed
+    Private Sub rmbView_Closed(sender As System.Object, e As ToolStripDropDownClosedEventArgs) Handles rmbView.Closed
         mRmbMenuOpen = False
     End Sub
 
@@ -3673,13 +5175,13 @@ Public Class MG_BasicViewer
         If mFrmGraphicsDetails Is Nothing Then
             CalculateTime(totalCutTime, totalRapidTime)
             mFrmGraphicsDetails = New frmGraphicsDetails(totalCutTime, totalRapidTime)
-            mFrmGraphicsDetails.SetGraphData(mMotionRecords, totalCutTime + totalRapidTime)
+            mFrmGraphicsDetails.SetGraphData(mAllMotionRecords, totalCutTime + totalRapidTime)
             mFrmGraphicsDetails.Show(Me)
-            ParentForm.Focus()
+            Me.ParentForm.Focus()
             UpdateElementDetails()
 
             If zeroFeedDetected Then
-                MsgBox("A feedrate of zero was detected and will invalidate time calculations.", MsgBoxStyle.Information, "Feed Alert")
+                MsgBox("Zero Feed", MsgBoxStyle.Information, "Feed Alert")
             End If
 
             RaiseEvent OnElementDetailsOpened()
@@ -3701,17 +5203,17 @@ Public Class MG_BasicViewer
         If mFrmGraphicsDetails IsNot Nothing Then
             CalculateTime(totalCutTime, totalRapidTime)
             mFrmGraphicsDetails.SetDetails(mLastSelectedMotionRecord)
-            mFrmGraphicsDetails.SetGraphData(mMotionRecords, totalCutTime + totalRapidTime)
+            mFrmGraphicsDetails.SetGraphData(mAllMotionRecords, totalCutTime + totalRapidTime)
         End If
     End Sub
 
-    Private Shared Sub mGraphicsDetails_FormClosed(ByVal sender As Object, ByVal e As System.Windows.Forms.FormClosedEventArgs) Handles mFrmGraphicsDetails.FormClosed
+    Private Shared Sub mGraphicsDetails_FormClosed(sender As Object, e As FormClosedEventArgs) Handles mFrmGraphicsDetails.FormClosed
         mFrmGraphicsDetails = Nothing
         RaiseEvent OnElementDetailsClose()
     End Sub
 
     Private Sub MG_BasicViewer_TouchDoubleDoubleTap(sender As Object, e As WMTouchEventArgs) Handles Me.TouchDoubleDoubleTap
-        FindExtents()
+        FindViewExtents()
         Redraw(False)
     End Sub
 
@@ -3726,7 +5228,9 @@ Public Class MG_BasicViewer
     End Sub
 
     Dim pinchDist As Double = 0
-    Private Sub MG_BasicViewer_TouchPinching(ByVal sender As Object, ByVal e As WMDoubleTouchEventArgs) Handles Me.TouchPinching
+    Private ReadOnly _View As SavedView
+
+    Private Sub MG_BasicViewer_TouchPinching(sender As Object, e As WMDoubleTouchEventArgs) Handles Me.TouchPinching
         Dim midPt As New Point((e.LocationsX(0) + e.LocationsX(1)) \ 2, (e.LocationsY(0) + e.LocationsY(1)) \ 2)
         mCurrentCursorPos = midPt
         If pinchDist <> 0 Then
@@ -3743,7 +5247,7 @@ Public Class MG_BasicViewer
         pinchDist = e.Distance
     End Sub
 
-    Private Sub MG_BasicViewer_Touchdown(ByVal sender As Object, ByVal e As WMTouchEventArgs) Handles Me.Touchdown
+    Private Sub MG_BasicViewer_Touchdown(sender As Object, e As WMTouchEventArgs) Handles Me.Touchdown
         ContextMenuStrip = Nothing
         pinchDist = 0
     End Sub
@@ -3762,15 +5266,129 @@ Public Class MG_BasicViewer
         Try
             ' Registering the window for multi-touch, using the default settings.
             ' p/invoking into user32.dll
-            If Not RegisterTouchWindow(Handle, 0) Then
-                Debug.Print("ERROR: Could not register window for multi-touch")
+            If Not RegisterTouchWindow(Me.Handle, 0) Then
+                'Debug.Print("ERROR: Could not register window for multi-touch")
             End If
 
         Catch exception As Exception
-            Debug.Print("ERROR: RegisterTouchWindow API not available")
-            Debug.Print(exception.ToString())
+            'Debug.Print("ERROR: RegisterTouchWindow API not available")
+            'Debug.Print(exception.ToString())
         End Try
     End Sub
 
+    Private Sub MG_BasicViewer_MouseDoubleClick(sender As Object, e As MouseEventArgs) Handles Me.MouseDoubleClick
+        If e.Button = MouseButtons.Middle Then
+            FindViewExtents()
+            Redraw(False)
+            SaveView()
+        End If
+    End Sub
 
+    Public Sub SetContextImages()
+        Try
+            If Me.ContextMenuStrip Is Nothing Then Return
+
+            Dim cms As ContextMenuStrip = Me.ContextMenuStrip
+            Dim fnt As Font
+            Dim size As Integer
+            If mTabletMode Then
+                size = 32
+                fnt = New Font(Me.Font.FontFamily, 20)
+            Else
+                size = 16
+                fnt = New Font(Me.Font.FontFamily, 10)
+            End If
+
+            cms.SuspendLayout()
+            cms.ImageScalingSize = New Size(size, size)
+            For Each cmsb As ToolStripMenuItem In cms.Items
+                cmsb.Font = fnt
+                If cmsb.Tag IsNot Nothing Then
+                    cmsb.Image = CType(My.Resources.ResourceManager.GetObject(cmsb.Tag.ToString & "_" & size), Image)
+                End If
+
+                For Each tsm As ToolStripMenuItem In cmsb.DropDownItems
+                    If tsm.Tag IsNot Nothing Then
+                        tsm.Image = CType(My.Resources.ResourceManager.GetObject(tsm.Tag.ToString & "_" & size), Image)
+                    End If
+                Next
+            Next
+            cms.ResumeLayout()
+        Catch ex As Exception
+            Debug.Assert(1 = 0, "SetContextImages")
+        End Try
+
+    End Sub
+
+    Private Sub MG_BasicViewer_KeyDown(sender As Object, e As KeyEventArgs) Handles Me.KeyDown
+        If e.Control Then
+            Select Case e.KeyCode
+                Case Keys.Z
+                    SetPreviousView()
+                    CreateDisplayListsAndDraw()
+
+                Case Keys.Y
+                    SetNextView()
+                    CreateDisplayListsAndDraw()
+            End Select
+        End If
+
+        If e.KeyCode = Keys.Escape Then
+            SetView(ManipMode.SELECTION)
+            mSelKeypoint3D = mExtentCenter
+            SetRotatePoint(mSelKeypoint3D)
+        End If
+    End Sub
+
+    Private Sub MG_BasicViewer_GotFocus(sender As Object, e As EventArgs) Handles Me.GotFocus
+        timerQuickPick.Enabled = True
+    End Sub
+
+    Private Sub MG_BasicViewer_LostFocus(sender As Object, e As EventArgs) Handles Me.LostFocus
+        timerQuickPick.Enabled = False
+    End Sub
+
+    Private Sub MG_BasicViewer_TouchMove(sender As Object, e As WMTouchEventArgs) Handles Me.TouchMove
+        Static Xold As Single
+        Static Yold As Single
+
+        If e.IsPrimaryContact And mTouchPointCount = 1 Then
+            mArcBall.UpdateRotation(e.LocationX, e.LocationY)
+            mArcBall.ApplyRotationMatrix()
+
+            SetViewMatrix3D()
+            If mDynamicViewManipulation Then
+                If mDrawLinesMilliseconds > maxDrawTime Then
+                    mArcQuality = FAST_QUALITY
+                End If
+                CreateDisplayListsAndDraw()
+            Else
+                DrawWcsOnlyToBuffer()
+            End If
+        End If
+        Xold = e.LocationX
+        Yold = e.LocationY
+    End Sub
+
+
+    'Private Sub Dx3_Motion(sender As Object, e As MotionEventArgs) Handles Dx3.Motion
+    '    With Me
+    '        .PanScene(e.TX \ 100, e.TY \ 100)
+    '        .Redraw(False)
+    '    End With
+    '    '    'CreateDisplayListsAndDraw()
+    '    '    'mArcBall.AddRotation(Maths.ToRadians(-Math.Sign(Yold - e.Y)), New Vector3(1, 0, 0))
+    '    '    'mArcBall.UpdateRotation(e.X, e.Y)
+    '    '    'mArcBall.ApplyRotationMatrix()
+    '    '    'SetViewMatrix3D()
+
+    'End Sub
+
+    'Private Sub Dx3_Button(sender As Object, e As ButtonEventArgs) Handles Dx3.Button
+
+    'End Sub
+
+    'Private Sub Dx3_ZeroPoint(sender As Object, e As EventArgs) Handles Dx3.ZeroPoint
+
+    'End Sub
 End Class

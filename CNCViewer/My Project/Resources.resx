@@ -541,4 +541,13 @@ Click Yes to cancel drawing.</value>
   <data name="viewrotate" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\basicncviewer\resources\viewrotate.bmp;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
+  <data name="Measure" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\measure.cur;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="MeasureKeypoint" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\measurekeypoint.cur;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="SetRotate" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\setrotate.cur;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
 </root>

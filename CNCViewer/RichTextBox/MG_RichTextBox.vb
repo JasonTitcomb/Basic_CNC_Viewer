@@ -614,7 +614,7 @@ Public Class MG_RichTextBox
             sFile = sFile & undoDir & GUID & idx & "-REDO.rtf"
             sFileToSave = Split(sFile, "|")(0)
             If My.Computer.FileSystem.FileExists(sFileToSave) = False Then
-                SaveFile(sFileToSave, Windows.Forms.RichTextBoxStreamType.RichText) 'Save as rich text to a temp file for undo
+                SaveFile(sFileToSave, System.Windows.Forms.RichTextBoxStreamType.RichText) 'Save as rich text to a temp file for undo
             End If
             u.Text = sFile
             u.SavedToFile = True
@@ -639,7 +639,7 @@ Public Class MG_RichTextBox
         Try
             sRedoFile = Split(sFiles, "|")(1)
             If My.Computer.FileSystem.FileExists(sRedoFile) Then
-                LoadAndKeepLinePos(sRedoFile, Windows.Forms.RichTextBoxStreamType.RichText)
+                LoadAndKeepLinePos(sRedoFile, System.Windows.Forms.RichTextBoxStreamType.RichText)
             End If
         Catch
             ClearUndo()
@@ -655,9 +655,9 @@ Public Class MG_RichTextBox
             sUndoFile = Split(sFiles, "|")(0)
             sRedoFile = Split(sFiles, "|")(1)
             If My.Computer.FileSystem.FileExists(sRedoFile) = False Then
-                SaveFile(sRedoFile, Windows.Forms.RichTextBoxStreamType.RichText) 'Save as rich text to a temp file for redo
+                SaveFile(sRedoFile, System.Windows.Forms.RichTextBoxStreamType.RichText) 'Save as rich text to a temp file for redo
             End If
-            LoadAndKeepLinePos(sUndoFile, Windows.Forms.RichTextBoxStreamType.RichText)
+            LoadAndKeepLinePos(sUndoFile, System.Windows.Forms.RichTextBoxStreamType.RichText)
         Catch
             ClearUndo()
             Throw
@@ -1500,7 +1500,7 @@ Public Class MG_RichTextBox
         RestoreScroll()
     End Sub
 
-    Public Sub LoadAndKeepLinePos(ByRef LdFile As String, ByRef Filetype As Windows.Forms.RichTextBoxStreamType)
+    Public Sub LoadAndKeepLinePos(ByRef LdFile As String, ByRef Filetype As System.Windows.Forms.RichTextBoxStreamType)
         'Find the location of the cursor
         SaveScrollAndCursor()
         'TODO add status
@@ -1536,7 +1536,7 @@ Public Class MG_RichTextBox
             Exit Sub
         End If
 
-        If e.Button = Windows.Forms.MouseButtons.Left AndAlso SelectionLength > 0 Then
+        If e.Button = System.Windows.Forms.MouseButtons.Left AndAlso SelectionLength > 0 Then
             Dim mouseCharPos As Integer = Me.GetCharIndexFromPosition(e.Location)
             If mouseCharPos > Me.SelectionStart AndAlso mouseCharPos < (SelectionStart + SelectionLength) Then
                 DragData.StartedByMe = True
@@ -1560,7 +1560,7 @@ Public Class MG_RichTextBox
         End If
 
         'If dragging has started and the left mouse is down
-        If e.Button = Windows.Forms.MouseButtons.Left AndAlso SelectionLength > 0 AndAlso DragData.StartedByMe Then
+        If e.Button = System.Windows.Forms.MouseButtons.Left AndAlso SelectionLength > 0 AndAlso DragData.StartedByMe Then
             DragData.InProgress = True
             DragData.SelRtf = SelectedRtf
             DragData.SelText = SelectedText

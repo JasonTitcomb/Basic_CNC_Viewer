@@ -28,10 +28,10 @@
         MG_View1.InitSiblingMotionBlocks(mMotionBlocks)
 
         MG_View1.SetRangeByLine(0, 0)
-        MG_View1.FindExtents()
+        MG_View1.FindViewExtents()
         MG_View1.ZoomSceneAtCenter(1.1)
 
-        MG_View2.FindExtents()
+        MG_View2.FindViewExtents()
         MG_View2.ZoomSceneAtCenter(1.1)
 
         MG_View1.Redraw(True)

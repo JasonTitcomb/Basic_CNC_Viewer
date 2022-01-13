@@ -22,30 +22,31 @@ Partial Class frmQuickPick
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()> _
     Private Sub InitializeComponent()
-        Me.lstQuickPick = New System.Windows.Forms.ListBox
+        Me.lstQuickPick = New System.Windows.Forms.ListBox()
         Me.SuspendLayout()
         '
         'lstQuickPick
         '
         Me.lstQuickPick.Dock = System.Windows.Forms.DockStyle.Fill
         Me.lstQuickPick.FormattingEnabled = True
-        Me.lstQuickPick.ItemHeight = 16
+        Me.lstQuickPick.ItemHeight = 17
         Me.lstQuickPick.Location = New System.Drawing.Point(0, 0)
-        Me.lstQuickPick.Margin = New System.Windows.Forms.Padding(4)
+        Me.lstQuickPick.Margin = New System.Windows.Forms.Padding(3, 4, 3, 4)
         Me.lstQuickPick.Name = "lstQuickPick"
-        Me.lstQuickPick.Size = New System.Drawing.Size(280, 84)
+        Me.lstQuickPick.Size = New System.Drawing.Size(245, 90)
         Me.lstQuickPick.TabIndex = 0
         '
         'frmQuickPick
         '
-        Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 16.0!)
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(7.0!, 17.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
-        Me.ClientSize = New System.Drawing.Size(280, 85)
+        Me.ClientSize = New System.Drawing.Size(245, 90)
         Me.Controls.Add(Me.lstQuickPick)
+        Me.Font = New System.Drawing.Font("Segoe UI", 9.75!)
         Me.FormBorderStyle = System.Windows.Forms.FormBorderStyle.SizableToolWindow
-        Me.Margin = New System.Windows.Forms.Padding(4)
+        Me.Margin = New System.Windows.Forms.Padding(3, 4, 3, 4)
         Me.Name = "frmQuickPick"
-        Me.Opacity = 0.8
+        Me.Opacity = 0.8R
         Me.StartPosition = System.Windows.Forms.FormStartPosition.Manual
         Me.Text = "Selections"
         Me.ResumeLayout(False)

@@ -1,5 +1,5 @@
 Partial Class MG_RichTextBox
-    Inherits Windows.Forms.RichTextBox
+    Inherits System.Windows.Forms.RichTextBox
 
     <System.Diagnostics.DebuggerNonUserCode()> _
     Public Sub New(ByVal Container As System.ComponentModel.IContainer)

@@ -1,7 +1,8 @@
 Option Strict On
 Option Explicit On
 Option Compare Text
-Imports System.xml
+Imports System.Text.RegularExpressions
+Imports System.Xml
 Public Class clsSettings
     Public Machines As New Specialized.StringDictionary
     Public Machine As New clsMachine
@@ -123,22 +124,30 @@ Public Class clsSettings
             .Comments = GetSetting("Comments", "();*")
             .Endmain = GetSetting("Endmain", "M30")
             .MachineType = CType([Enum].Parse(GetType(MachineType), GetSetting("MachineType", MachineType.MILL.ToString)), MachineType)
-            .RotaryAxis = CType([Enum].Parse(GetType(Axis), GetSetting("RotaryAxis", "X")), Axis)
+            .RotaryAxis = CType([Enum].Parse(GetType(ArcAxis), GetSetting("RotaryAxis", "X")), ArcAxis)
             .RotaryDir = CType([Enum].Parse(GetType(RotaryDirection), GetSetting("RotaryDir", "CW")), RotaryDirection)
-            .Precision = Integer.Parse(GetSetting("Precision", "4"), System.Globalization.NumberFormatInfo.InvariantInfo)
+            .Precision = Integer.Parse(GetSetting("Precision", "4"), Globalization.NumberFormatInfo.InvariantInfo)
             .ProgramId = GetSetting("ProgramId", ":$O")
             .SubReturn = GetSetting("SubReturn", "M99")
-            .RotPrecision = Integer.Parse(GetSetting("RotPrecision", "4"), System.Globalization.NumberFormatInfo.InvariantInfo)
+            .RotPrecision = Integer.Parse(GetSetting("RotPrecision", "4"), Globalization.NumberFormatInfo.InvariantInfo)
             .RotaryType = CType([Enum].Parse(GetType(RotaryMotionType), GetSetting("RotaryType", "CAD")), RotaryMotionType)
             .Searchstring = GetSetting("Searchstring")
             For r = 0 To .ViewAngles.Length - 1
-                .ViewAngles(r) = Single.Parse(GetSetting("ViewAngles_" & r.ToString, "0.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
+                .ViewAngles(r) = Single.Parse(GetSetting("ViewAngles_" & r.ToString, "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
             Next
-            For r = 0 To .ViewShift.Length - 1
-                .ViewShift(r) = Single.Parse(GetSetting("ViewShift_" & r.ToString, "0.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
+
+            For r = 0 To 2
+                .ViewShift(r) = Single.Parse(GetSetting("ViewShift_" & r.ToString, "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
             Next
+            For r = 0 To 3
+                .Invert(r) = Single.Parse(GetSetting("Invert_" & r.ToString, "1.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            Next
+
             .Absolute = GetSetting("Absolute", "G90")
             .Incremental = GetSetting("Incremental", "G91")
+
+            .AbsIJK = GetSetting("AbsIJK", "G90.1")
+            .IncIJK = GetSetting("IncIJK", "G91.1")
             .CCArc = GetSetting("CCArc", "G03")
             .CWArc = GetSetting("CWArc", "G02")
             .DrillRapid = GetSetting("DrillRapid", "R")
@@ -153,7 +162,12 @@ Public Class clsSettings
             .XYplane = GetSetting("XYplane", "G17")
             .XZplane = GetSetting("XZplane", "G18")
             .YZplane = GetSetting("YZplane", "G19")
-            .Subcall = GetSetting("Subcall", "M98")
+            .ExternalCall = GetSetting("Subcall", "M98")
+
+            .ExternalCallParam = GetSetting("ExternalCallParam", "P")
+            .InternalCall = GetSetting("InternalCall", "M97")
+            .InternalCallParam = GetSetting("InternalCallParam", "H")
+
             .SubRepeats = GetSetting("SubRepeats", "L")
 
             .CompLeft = GetSetting("CompLeft", "G41")
@@ -163,10 +177,11 @@ Public Class clsSettings
             .FeedModeRev = GetSetting("FeedModeRev", "G99")
             .FeedPrecision = CInt(GetSetting("FeedPrecision", "5"))
 
-            .RapidRate = Single.Parse(GetSetting("RapidRate", "250.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .RapidRate = Single.Parse(GetSetting("RapidRate", "250.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
             .MaxRpmAddress = GetSetting("MaxRpmAddress", "G50")
-            .MaxRpmValue = Single.Parse(GetSetting("MaxRpmValue", "5000.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .MaxRpmValue = Single.Parse(GetSetting("MaxRpmValue", "5000.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
             .DogLegMotion = Boolean.Parse(GetSetting("DogLegMotion", "True"))
+            .AllowG10 = Boolean.Parse(GetSetting("AllowG10", "True"))
             .SpeedModeRPM = GetSetting("SpeedModeRPM", "G97")
             .SpeedModeSFM = GetSetting("SpeedModeSFM", "G96")
 
@@ -174,25 +189,59 @@ Public Class clsSettings
 
             .ToolChange = GetSetting("ToolChange", "M06")
             .HomeCommand = GetSetting("HomeCommand", "G28")
-            .HomeAddresses(0) = GetSetting("HomeAddresses0", "U")
-            .HomeAddresses(1) = GetSetting("HomeAddresses1", "V")
-            .HomeAddresses(2) = GetSetting("HomeAddresses2", "W")
-            .HomeValues(0) = Single.Parse(GetSetting("HomeValues0", "0.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
-            .HomeValues(1) = Single.Parse(GetSetting("HomeValues1", "0.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
-            .HomeValues(2) = Single.Parse(GetSetting("HomeValues2", "0.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .HomeAddresses(0) = GetSetting("HomeAddress0", "U")
+            .HomeAddresses(1) = GetSetting("HomeAddress1", "V")
+            .HomeAddresses(2) = GetSetting("HomeAddress2", "W")
+            .HomeValues(0) = Single.Parse(GetSetting("HomeValues0", "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .HomeValues(1) = Single.Parse(GetSetting("HomeValues1", "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .HomeValues(2) = Single.Parse(GetSetting("HomeValues2", "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
 
-            .Limits(0) = Single.Parse(GetSetting("LimitsMaxX", "1000.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
-            .Limits(1) = Single.Parse(GetSetting("LimitsMinX", "-1000.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
-            .Limits(2) = Single.Parse(GetSetting("LimitsMaxY", "1000.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
-            .Limits(3) = Single.Parse(GetSetting("LimitsMinY", "-1000.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
-            .Limits(4) = Single.Parse(GetSetting("LimitsMaxZ", "1000.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
-            .Limits(5) = Single.Parse(GetSetting("LimitsMinZ", "-1000.0"), System.Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .Limits(0) = Single.Parse(GetSetting("LimitsMaxX", "1000.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .Limits(1) = Single.Parse(GetSetting("LimitsMinX", "-1000.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .Limits(2) = Single.Parse(GetSetting("LimitsMaxY", "1000.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .Limits(3) = Single.Parse(GetSetting("LimitsMinY", "-1000.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .Limits(4) = Single.Parse(GetSetting("LimitsMaxZ", "1000.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .Limits(5) = Single.Parse(GetSetting("LimitsMinZ", "-1000.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+
+            .ViewShift(0) = Single.Parse(GetSetting("ViewShiftX", "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .ViewShift(1) = Single.Parse(GetSetting("ViewShiftY", "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+            .ViewShift(2) = Single.Parse(GetSetting("ViewShiftZ", "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+
+            .Rotary1Radius = Single.Parse(GetSetting("Rotary1Radius", "0.0"), Globalization.CultureInfo.InvariantCulture.NumberFormat)
+
 
             .ParserName = GetSetting("Parser", "FANUC_Parser")
             .EmitterName = GetSetting("Emitter", "GcodeEmitter")
             .CornerTreatments = CBool(GetSetting("CornerTreatments", "False"))
+            .AllowTaper = CBool(GetSetting("AllowTaper", "False"))
             .UseUVW = CBool(GetSetting("UseUVW", "False"))
             .InvertArcCenterValues = CBool(GetSetting("InvertArcCenterValues", "False"))
+
+            .WorkOffsetCancel = GetSetting("WorkOffsetCancel", "G53")
+            .WorkOffsetG52 = GetSetting("WorkOffsetG52", "G52")
+            .WorkOffsetTemp = GetSetting("WorkOffsetTemp", "G92")
+            .WorkOffsetG52 = GetSetting("WorkOffsetG52", "G52")
+            .WorkOffsets = GetSetting("WorkOffsets", "G54,0,0,0,0")
+
+            .G68RotOn = GetSetting("G68RotationOn", "G68")
+            .G68RotOff = GetSetting("G68RotationOff", "G69")
+            .G68RotX = GetSetting("G68RotationX", "X")
+            .G68RotY = GetSetting("G68RotationY", "Y")
+            .G68RotR = GetSetting("G68RotationR", "R")
+
+            .G51ScaleOn = GetSetting("G51ScalingOn", "G51")
+            .G51ScaleOff = GetSetting("G51ScalingOff", "G50")
+            .G51ScaleX = GetSetting("G51ScalingX", "X")
+            .G51ScaleY = GetSetting("G51ScalingY", "Y")
+            .G51ScaleZ = GetSetting("G51ScalingZ", "Z")
+            .G51ScaleFactor = GetSetting("G51ScalingFactor", "P")
+            .MirrorX = GetSetting("MirrorX", "X")
+            .MirrorY = GetSetting("MirrorY", "Y")
+            .MirrorZ = GetSetting("MirrorZ", "Z")
+
+            .AllowG10 = CBool(GetSetting("AllowG10", "True"))
+            .MirrorOn = GetSetting("MirrorOn", "G51.1")
+            .MirrorOff = GetSetting("MirrorOff", "G50.1")
         End With
 
     End Sub
@@ -225,11 +274,14 @@ Public Class clsSettings
             For r = 0 To 2
                 PutSetting("ViewAngles_" & r.ToString, .ViewAngles(r).ToString)
             Next
-            For r = 0 To 2
-                PutSetting("ViewShift_" & r.ToString, .ViewShift(r).ToString(System.Globalization.NumberFormatInfo.InvariantInfo))
+            For r = 0 To .Invert.Length - 1
+                PutSetting("Invert_" & r.ToString, .Invert(r).ToString(Globalization.NumberFormatInfo.InvariantInfo))
             Next
             PutSetting("Absolute", .Absolute)
             PutSetting("Incremental", .Incremental)
+            PutSetting("AbsIJK", .AbsIJK)
+            PutSetting("IncIJK", .IncIJK)
+
             PutSetting("CCArc", .CCArc)
             PutSetting("CWArc", .CWArc)
             PutSetting("DrillRapid", .DrillRapid)
@@ -244,7 +296,12 @@ Public Class clsSettings
             PutSetting("XYplane", .XYplane)
             PutSetting("XZplane", .XZplane)
             PutSetting("YZplane", .YZplane)
-            PutSetting("Subcall", .Subcall)
+            PutSetting("Subcall", .ExternalCall)
+
+            PutSetting("ExternalCallParam", .ExternalCallParam)
+            PutSetting("InternalCall", .InternalCall)
+            PutSetting("InternalCallParam", .InternalCallParam)
+
             PutSetting("SubRepeats", .SubRepeats)
             PutSetting("RapidRate", .RapidRate.ToString)
 
@@ -281,9 +338,40 @@ Public Class clsSettings
             PutSetting("LimitsMinY", .Limits(3).ToString)
             PutSetting("LimitsMaxZ", .Limits(4).ToString)
             PutSetting("LimitsMinZ", .Limits(5).ToString)
+
+            PutSetting("ViewShiftX", .ViewShift(0).ToString)
+            PutSetting("ViewShiftY", .ViewShift(1).ToString)
+            PutSetting("ViewShiftZ", .ViewShift(2).ToString)
+            PutSetting("Rotary1Radius", .Rotary1Radius.ToString)
+
             PutSetting("Parser", .ParserName)
             PutSetting("Emitter", .EmitterName)
             PutSetting("CornerTreatments", .CornerTreatments.ToString)
+            PutSetting("AllowTaper", .AllowTaper.ToString)
+
+            PutSetting("WorkOffsetCancel", .WorkOffsetCancel)
+            PutSetting("WorkOffsetTemp", .WorkOffsetTemp)
+            PutSetting("WorkOffsetG52", .WorkOffsetG52)
+            PutSetting("WorkOffsets", .WorkOffsets)
+
+            PutSetting("G68RotationOn", .G68RotOn)
+            PutSetting("G68RotationOff", .G68RotOff)
+            PutSetting("G68RotationX", .G68RotX)
+            PutSetting("G68RotationY", .G68RotY)
+            PutSetting("G68RotationR", .G68RotR)
+
+            PutSetting("G51ScalingOn", .G51ScaleOn)
+            PutSetting("G51ScalingOff", .G51ScaleOff)
+            PutSetting("G51ScalingX", .G51ScaleX)
+            PutSetting("G51ScalingY", .G51ScaleY)
+            PutSetting("G51ScalingZ", .G51ScaleZ)
+            PutSetting("G51ScalingFactor", .G51ScaleFactor)
+            PutSetting("AllowG10", .AllowG10.ToString)
+            PutSetting("MirrorOn", .MirrorOn)
+            PutSetting("MirrorOff", .MirrorOff)
+            PutSetting("MirrorX", .MirrorX)
+            PutSetting("MirrorY", .MirrorY)
+            PutSetting("MirrorZ", .MirrorZ)
         End With
         xmlSettings.Save(sName)
     End Sub
@@ -358,12 +446,23 @@ Public Class clsSettings
     End Function
 
     Public Function MatchMachineToString(ByVal text As String) As Boolean
+        Dim bestMatch As String = String.Empty
+
         For Each m As DictionaryEntry In Machines
-            If text.Contains(CStr(m.Value)) Then
-                MachineName = CStr(m.Key)
-                Return True
+            If Not String.IsNullOrEmpty(CType(m.Value, String)) Then
+                Dim match As String = CType(m.Value, String)
+                Dim ma As Match = Regex.Match(text, match)
+                If ma.Success Then
+                    If ma.Length > bestMatch.Length Then
+                        bestMatch = ma.Value
+                    End If
+                End If
             End If
         Next
+        If bestMatch.Length > 0 Then
+            MachineName = bestMatch
+            Return True
+        End If
         Return False
     End Function
 

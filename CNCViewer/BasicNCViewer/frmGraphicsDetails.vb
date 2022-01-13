@@ -36,37 +36,36 @@ Friend Class frmGraphicsDetails
 
         Private Function GetStartDist() As String
             Dim delta As Single
-            delta = Distance3(mElement.Xold, mElement.Yold, mElement.Zold, mLastRecord.Xold, mLastRecord.Yold, mLastRecord.Zold)
+            delta = Distance3(mElement.XYZold.X, mElement.XYZold.Y, mElement.XYZold.Z, mLastRecord.XYZold.X, mLastRecord.XYZold.Y, mLastRecord.XYZold.Z)
             Return AdjustForUnits(delta)
         End Function
 
         Private Function GetEndDist() As String
             Dim delta As Single
-            delta = Distance3(mElement.Xpos, mElement.Ypos, mElement.Zpos, mLastRecord.Xpos, mLastRecord.Ypos, mLastRecord.Zpos)
+            delta = Distance3(mElement.XYZpos.X, mElement.XYZpos.Y, mElement.XYZpos.Z, mLastRecord.XYZpos.X, mLastRecord.XYZpos.Y, mLastRecord.XYZpos.Z)
             Return AdjustForUnits(delta)
         End Function
 
         Private Function GetLenDiff() As String
-            Dim len1, len2 As Single
-            len1 = Distance3(mElement.Xpos, mElement.Ypos, mElement.Zpos, mElement.Xold, mElement.Yold, mElement.Zold)
-            len2 = Distance3(mLastRecord.Xpos, mLastRecord.Ypos, mLastRecord.Zpos, mLastRecord.Xold, mLastRecord.Yold, mLastRecord.Zold)
+            Dim len1, len2 As Double
+            len1 = Distance3(mElement.XYZpos.X, mElement.XYZpos.Y, mElement.XYZpos.Z, mElement.XYZold.X, mElement.XYZold.Y, mElement.XYZold.Z)
+            len2 = Distance3(mLastRecord.XYZpos.X, mLastRecord.XYZpos.Y, mLastRecord.XYZpos.Z, mLastRecord.XYZold.X, mLastRecord.XYZold.Y, mLastRecord.XYZold.Z)
             Return AdjustForUnits(Math.Abs(len1 - len2))
-
         End Function
 
-        Private Function Distance3(ByVal X1 As Single, ByVal Y1 As Single, ByVal Z1 As Single, ByVal x2 As Single, ByVal y2 As Single, ByVal Z2 As Single) As Single
-            Return CSng(System.Math.Sqrt(((X1 - x2) ^ 2) + ((Y1 - y2) ^ 2) + ((Z1 - Z2) ^ 2)))
+        Private Function Distance3(X1 As Double, Y1 As Double, Z1 As Double, x2 As Double, y2 As Double, Z2 As Double) As Double
+            Return (System.Math.Sqrt(((X1 - x2) ^ 2) + ((Y1 - y2) ^ 2) + ((Z1 - Z2) ^ 2)))
         End Function
 
         Private Function AdjustForUnits(ByVal val As Single) As String
-            If MotionUnits <> MachineUnits.ENGLISH Then
-                val *= 25.4F
-            End If
+            'If MotionUnits <> MachineUnits.ENGLISH Then
+            '    val *= 25.4F
+            'End If
             Select Case MotionUnits
                 Case MachineUnits.ENGLISH
-                    Return val.ToString(NUMBERFORMAT & " in")
+                    Return val.ToString(NUMBERFORMAT & " in", System.Globalization.NumberFormatInfo.InvariantInfo)
                 Case Else
-                    Return val.ToString(NUMBERFORMAT & " mm")
+                    Return val.ToString(NUMBERFORMAT & " mm", System.Globalization.NumberFormatInfo.InvariantInfo)
             End Select
 
         End Function
@@ -109,7 +108,7 @@ Friend Class frmGraphicsDetails
          Category("Element")>
         Public Property LastPosition() As String
             Get
-                Return "X" & mElement.Xold.ToString(NUMBERFORMAT) & ", Y" & mElement.Yold.ToString(NUMBERFORMAT) & ", Z" & mElement.Zold.ToString(NUMBERFORMAT)
+                Return "X" & AdjustForUnits(mElement.XYZold.X) & ", Y" & AdjustForUnits(mElement.XYZold.Y) & ", Z" & AdjustForUnits(mElement.XYZold.Z)
             End Get
             Set(ByVal value As String)
 
@@ -120,7 +119,7 @@ Friend Class frmGraphicsDetails
          Category("Element")>
         Public Property CurrentPosition() As String
             Get
-                Return "X" & mElement.Xpos.ToString(NUMBERFORMAT) & ", Y" & mElement.Ypos.ToString(NUMBERFORMAT) & ", Z" & mElement.Zpos.ToString(NUMBERFORMAT)
+                Return "X" & AdjustForUnits(mElement.XYZpos.X) & ", Y" & AdjustForUnits(mElement.XYZpos.Y) & ", Z" & AdjustForUnits(mElement.XYZpos.Z)
             End Get
             Set(ByVal value As String)
 
@@ -132,7 +131,7 @@ Friend Class frmGraphicsDetails
         Public Property LineAngle_XY() As String
             Get
                 If MotionType = Motion.LINE Then
-                    Dim angle As Single = MG_BasicViewer.AngleFromPoint(mElement.Xpos - mElement.Xold, mElement.Ypos - mElement.Yold, False)
+                    Dim angle As Single = MG_BasicViewer.AngleFromPoint(mElement.XYZpos.X - mElement.XYZold.X, mElement.XYZpos.Y - mElement.XYZold.Y, False)
                     Return RadianAngleToDegString(angle)
                 Else
                     Return "-"
@@ -148,7 +147,7 @@ Friend Class frmGraphicsDetails
         Public Property LineAngle_YZ() As String
             Get
                 If MotionType = Motion.LINE Then
-                    Dim angle As Single = MG_BasicViewer.AngleFromPoint(mElement.Ypos - mElement.Yold, mElement.Zpos - mElement.Zold, False)
+                    Dim angle As Single = MG_BasicViewer.AngleFromPoint(mElement.XYZpos.Y - mElement.XYZold.Y, mElement.XYZpos.Z - mElement.XYZold.Z, False)
                     Return RadianAngleToDegString(angle)
                 Else
                     Return "-"
@@ -163,7 +162,7 @@ Friend Class frmGraphicsDetails
         Public Property LineAngle_ZX() As String
             Get
                 If MotionType = Motion.LINE Then
-                    Dim angle As Single = MG_BasicViewer.AngleFromPoint(mElement.Zpos - mElement.Zold, mElement.Xpos - mElement.Xold, False)
+                    Dim angle As Single = MG_BasicViewer.AngleFromPoint(mElement.XYZpos.Z - mElement.XYZold.Z, mElement.XYZpos.X - mElement.XYZold.X, False)
                     Return RadianAngleToDegString(angle)
                 Else
                     Return "-"
@@ -190,7 +189,7 @@ Friend Class frmGraphicsDetails
         Public Property ArcCenter() As String
             Get
                 If MotionType = Motion.CCARC Or MotionType = Motion.CWARC Then
-                    Return "X" & mElement.Xcentr.ToString(NUMBERFORMAT) & ", Y" & mElement.Ycentr.ToString(NUMBERFORMAT) & ", Z" & mElement.Zcentr.ToString(NUMBERFORMAT)
+                    Return "X" & mElement.XYZcenter.X.ToString(NUMBERFORMAT) & ", Y" & mElement.XYZcenter.Y.ToString(NUMBERFORMAT) & ", Z" & mElement.XYZcenter.Z.ToString(NUMBERFORMAT)
                 Else
                     Return "-"
                 End If
@@ -295,43 +294,43 @@ Friend Class frmGraphicsDetails
 
 
 
-        <Description("The distance between the start points in 3D"),
-  Category("Measure")>
-        Public Property DistanceBetweenStarts() As String
-            Get
-                If mLastRecord Is Nothing Then
-                    Return "Select a second element"
-                Else
-                    Try
-                        Return GetStartDist()
-                    Catch ex As Exception
-                        Return "Error"
-                    End Try
-                End If
-            End Get
-            Set(ByVal value As String)
+        '      <Description("The distance between the start points in 3D"), _
+        'Category("Measure")> _
+        'Public Property DistanceBetweenStarts() As String
+        '          Get
+        '              If mLastRecord Is Nothing Then
+        '                  Return "Select a second element"
+        '              Else
+        '                  Try
+        '                      Return GetStartDist()
+        '                  Catch ex As Exception
+        '                      Return "Error"
+        '                  End Try
+        '              End If
+        '          End Get
+        '          Set(ByVal value As String)
 
-            End Set
-        End Property
+        '          End Set
+        '      End Property
 
-        <Description("The distance between the end points in 3D"),
-Category("Measure")>
-        Public Property DistanceBetweenEnds() As String
-            Get
-                If mLastRecord Is Nothing Then
-                    Return "Select a second element"
-                Else
-                    Try
-                        Return GetEndDist()
-                    Catch ex As Exception
-                        Return "Error"
-                    End Try
-                End If
-            End Get
-            Set(ByVal value As String)
+        '        <Description("The distance between the end points in 3D"), _
+        'Category("Measure")> _
+        'Public Property DistanceBetweenEnds() As String
+        '            Get
+        '                If mLastRecord Is Nothing Then
+        '                    Return "Select a second element"
+        '                Else
+        '                    Try
+        '                        Return GetEndDist()
+        '                    Catch ex As Exception
+        '                        Return "Error"
+        '                    End Try
+        '                End If
+        '            End Get
+        '            Set(ByVal value As String)
 
-            End Set
-        End Property
+        '            End Set
+        '        End Property
 
 
         <Description("The difference in length"),
@@ -550,13 +549,13 @@ Category("Measure")>
         End Function
     End Class
 
-    Private Sub frmGraphicsDetails_FormClosing(ByVal sender As Object, ByVal e As System.Windows.Forms.FormClosingEventArgs) Handles Me.FormClosing
+    Private Sub frmGraphicsDetails_FormClosing(ByVal sender As Object, ByVal e As FormClosingEventArgs) Handles Me.FormClosing
         My.Settings.GraphicsDetailsLocation = Me.Location
         My.Settings.GraphicsDetailsSize = Me.Size
         My.Settings.Save()
     End Sub
 
-    Private Sub frmGraphicsDetails_Load(ByVal sender As Object, ByVal e As System.EventArgs) Handles Me.Load
+    Private Sub frmGraphicsDetails_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
         Try
             For Each c As Control In Me.pgDetails.Controls
                 Dim toolStrip As ToolStrip = TryCast(c, ToolStrip)
@@ -565,7 +564,7 @@ Category("Measure")>
                     toolStrip.Items(4).Visible = False
                     Dim tsbPrint As ToolStripButton
                     'Printing
-                    tsbPrint = New System.Windows.Forms.ToolStripButton()
+                    tsbPrint = New ToolStripButton()
                     With tsbPrint
                         .ToolTipText = "Print"
                         .Image = My.Resources.PrintHS
@@ -626,7 +625,7 @@ Category("Measure")>
             MG_Graph1.AddColorBar(toolColor, tooltext & "   " & mDetails.FormatTime(toolTime), percentTime)
             MG_Graph1.Invalidate()
         Catch ex As Exception
-            Debug.Print(ex.Message)
+            'Debug.Print(ex.Message)
         End Try
 
     End Sub
@@ -643,7 +642,7 @@ Category("Measure")>
         End If
     End Sub
 
-    Private Sub Print_Clicked(ByVal sender As System.Object, ByVal e As System.EventArgs)
+    Private Sub Print_Clicked(ByVal sender As System.Object, ByVal e As EventArgs)
         Try
             Dim prn As New Printing.PrintDocument
             ' Handle the page events

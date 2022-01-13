@@ -4,7 +4,7 @@
 ''' https://github.com/JasonTitcomb/Basic_CNC_Viewer/blob/master/LICENSE.md
 ''' </remarks>
 
-Option Strict On
+Option Strict Off
 Option Explicit On
 Imports System.Collections.Generic
 Imports System.IO
@@ -27,7 +27,6 @@ Friend Class frmBasicViewer
     Private WithEvents mScheme As New clsColorScheme
     Private mArgs As System.Collections.ObjectModel.ReadOnlyCollection(Of String)
     Private mLastFolder As String
-
     Private Sub frmViewer_Load(ByVal sender As Object, ByVal e As System.EventArgs) Handles Me.Load
         Try
             MG_ViewerCurrent = Me.MG_Viewer1
@@ -91,16 +90,16 @@ Friend Class frmBasicViewer
             RTB.ForceUpperCase = True
             RTB.ZoomFactor = My.Settings.EditorZoom
 
-#If DEBUG Then
-            My.Settings.Virgin = False
-#End If
+            '#If DEBUG Then
+            '            My.Settings.Virgin = False
+            '#End If
 
-            If My.Settings.Virgin = True Then
-                If IO.File.Exists(AppDataPath & "\Samples\Mill.cnc") Then
+            'If My.Settings.Virgin = True Then
+            If IO.File.Exists(AppDataPath & "\Samples\Mill.cnc") Then
                     OpenFile(AppDataPath & "\Samples\Mill.cnc")
                     SetDefaultViews()
                 End If
-            End If
+            'End If
 
             Me.Location = My.Settings.ViewerLocation
             Me.Size = My.Settings.ViewFormSize
@@ -247,7 +246,9 @@ Friend Class frmBasicViewer
             Else
                 LoadFile(cncFile)
             End If
-            ProcessFile(cncFile)
+            ProcessText()
+            MG_ViewerCurrent.SetAllRotatePointToCenter()
+
         Catch ex As Exception
             mLog.LogError(ex)
         Finally
@@ -311,10 +312,10 @@ Friend Class frmBasicViewer
             MG_Viewer3.Init()
             MG_Viewer4.Init()
 
-            MG_Viewer1.FindExtents()
-            MG_Viewer2.FindExtents()
-            MG_Viewer3.FindExtents()
-            MG_Viewer4.FindExtents()
+            MG_Viewer1.FindViewExtents()
+            MG_Viewer2.FindViewExtents()
+            MG_Viewer3.FindViewExtents()
+            MG_Viewer4.FindViewExtents()
             MG_ViewerCurrent.Redraw(True)
         Catch ex As Exception
             mLog.LogError(ex)
@@ -335,7 +336,7 @@ Friend Class frmBasicViewer
                 LoadFile(cncFile, True)
             End If
 
-            ProcessFile(cncFile)
+            ProcessText()
 
             For Each tl As clsToolLayer In tls.Values
                 If MG_ViewerCurrent.ToolLayers.ContainsKey(tl.Number) Then
@@ -360,21 +361,24 @@ Friend Class frmBasicViewer
 
         mParser.LoadColorsFromSettings(My.Settings.ToolColors)
         mParser.ProcessText(RTB.FileName, RTB.Text, mMotionBlocks, mNcProgs)
-        MG_ViewerCurrent.RangeEnd = MG_ViewerCurrent.MotionRecords.Count - 1
+        MG_ViewerCurrent.RangeEnd = MG_ViewerCurrent.AllMotionRecords.Count - 1
 
-        BreakPointSlider.Maximum = MG_ViewerCurrent.MotionRecords.Count - 1
-        If MG_ViewerCurrent.RangeEnd > MG_ViewerCurrent.MotionRecords.Count - 1 Then
-            MG_ViewerCurrent.RangeEnd = MG_ViewerCurrent.MotionRecords.Count - 1
+        BreakPointSlider.Maximum = MG_ViewerCurrent.AllMotionRecords.Count - 1
+        If MG_ViewerCurrent.RangeEnd > MG_ViewerCurrent.AllMotionRecords.Count - 1 Then
+            MG_ViewerCurrent.RangeEnd = MG_ViewerCurrent.AllMotionRecords.Count - 1
         End If
         MG_ViewerCurrent.GatherToolsFromMotionRecords()
+
+        MG_ViewerCurrent.CalculateToolpath3DExtents()
+
         If mParser.ParseErrors.Count > 0 And mParser.ParseErrors.Count < 50 Then
             For Each p As clsParseError In mParser.ParseErrors
                 ShowSyntaxError(p.CharPosition, p.LinePosition)
             Next
         End If
         lblStatus.Text = "Done"
-        If MG_ViewerCurrent.MotionRecords.Count > 0 Then
-            NC_Player.LastTool = MG_ViewerCurrent.MotionRecords(0).Tool
+        If MG_ViewerCurrent.AllMotionRecords.Count > 0 Then
+            NC_Player.LastTool = MG_ViewerCurrent.AllMotionRecords(0).Tool
         End If
         Progress.Value = 0
     End Sub
@@ -382,45 +386,6 @@ Friend Class frmBasicViewer
     Private Sub ShowSyntaxError(ByVal charPos As Integer, ByVal linePos As Integer)
         RTB.ScrollLineToCenter(linePos)
         RTB.HighlightSyntaxError(charPos, linePos)
-    End Sub
-
-    Private Sub ProcessFile(ByVal fileName As String)
-        If fileName Is Nothing Then
-            Return
-        End If
-        If Not IO.File.Exists(fileName) Then
-            lblStatus.Text = "File does not exist!"
-            Return
-        End If
-        lblStatus.Image = Nothing
-        mLog.Alerts.Clear()
-        mLog.Exceptions.Clear()
-        lblStatus.Text = "Processing..."
-        mMotionBlocks.Clear()
-
-        mParser.Init(mSetup.Machine)
-        mParser.LoadColorsFromSettings(My.Settings.ToolColors)
-        mParser.ProcessFile(fileName, mMotionBlocks, mNcProgs)
-
-        MG_ViewerCurrent.InitMyNeighbors()
-        MG_ViewerCurrent.InitSiblingMotionBlocks(mMotionBlocks)
-
-        BreakPointSlider.Maximum = MG_ViewerCurrent.MotionRecords.Count - 1
-        If MG_ViewerCurrent.RangeEnd > MG_ViewerCurrent.MotionRecords.Count - 1 Then
-            MG_ViewerCurrent.RangeEnd = MG_ViewerCurrent.MotionRecords.Count - 1
-        End If
-        MG_ViewerCurrent.GatherToolsFromMotionRecords()
-
-        If mParser.ParseErrors.Count > 0 And mParser.ParseErrors.Count < 50 Then
-            For Each p As clsParseError In mParser.ParseErrors
-                ShowSyntaxError(p.CharPosition, p.LinePosition)
-            Next
-        End If
-        lblStatus.Text = "Done"
-        If MG_ViewerCurrent.MotionRecords.Count > 0 Then
-            NC_Player.LastTool = MG_ViewerCurrent.MotionRecords(0).Tool
-        End If
-        Progress.Value = 0
     End Sub
 
 
@@ -443,13 +408,13 @@ Friend Class frmBasicViewer
                 MG_ViewerCurrent.Roll = 0
                 MG_ViewerCurrent.Yaw = 315
         End Select
-        MG_ViewerCurrent.FindExtents()
+        MG_ViewerCurrent.FindViewExtents()
         MG_ViewerCurrent.Redraw(False)
     End Sub
 
-    Private Sub MG_Viewer_MouseLocation(ByVal x As System.Single, ByVal y As System.Single) Handles MG_ViewerCurrent.MouseLocation
+    Private Sub MG_Viewer_MouseLocation(x As System.Single, y As System.Single, z As Single) Handles MG_ViewerCurrent.MouseLocation
         Try
-            lblStatus.Text = "X=" & x.ToString("0.000") & "   Y=" & y.ToString("0.000")
+            lblStatus.Text = "X=" & x.ToString("0.0000") & "   Y=" & y.ToString("0.0000") & "   Z=" & z.ToString("0.0000")
         Catch
         End Try
     End Sub
@@ -470,13 +435,13 @@ Friend Class frmBasicViewer
         Select Case tag
             Case "viewfit"
                 If My.Computer.Keyboard.ShiftKeyDown Then
-                    MG_Viewer1.FindExtents()
-                    MG_Viewer2.FindExtents()
-                    MG_Viewer3.FindExtents()
-                    MG_Viewer4.FindExtents()
+                    MG_Viewer1.FindViewExtents()
+                    MG_Viewer2.FindViewExtents()
+                    MG_Viewer3.FindViewExtents()
+                    MG_Viewer4.FindViewExtents()
                     MG_ViewerCurrent.Redraw(True)
                 Else
-                    MG_ViewerCurrent.FindExtents()
+                    MG_ViewerCurrent.FindViewExtents()
                     MG_ViewerCurrent.Redraw(False)
                 End If
             Case "viewpan"
@@ -553,24 +518,24 @@ Friend Class frmBasicViewer
         MG_Viewer1.Pitch = 0.0F
         MG_Viewer1.Roll = 0.0F
         MG_Viewer1.Yaw = 0.0F
-        MG_Viewer1.FindExtents()
+        MG_Viewer1.FindViewExtents()
         'Case "Front"
         MG_Viewer3.Pitch = 270.0F
         MG_Viewer3.Roll = 0.0F
         MG_Viewer3.Yaw = 360.0F
-        MG_Viewer3.FindExtents()
+        MG_Viewer3.FindViewExtents()
 
         'Case "Right"
         MG_Viewer4.Pitch = 270.0F
         MG_Viewer4.Roll = 0.0F
         MG_Viewer4.Yaw = 270.0F
-        MG_Viewer4.FindExtents()
+        MG_Viewer4.FindViewExtents()
 
         'Case "ISO"
         MG_Viewer2.Pitch = 315.0F
         MG_Viewer2.Roll = 0.0F
         MG_Viewer2.Yaw = 315.0F
-        MG_Viewer2.FindExtents()
+        MG_Viewer2.FindViewExtents()
         MG_ViewerCurrent.Redraw(True)
     End Sub
 
@@ -644,7 +609,7 @@ Friend Class frmBasicViewer
                 frm.tvTools.BackColor = Me.MG_Viewer1.BackColor
                 frm.StartPosition = FormStartPosition.Manual
                 frm.Location = loc
-                If frm.ShowDialog() = Windows.Forms.DialogResult.OK Then
+                If frm.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
                     For Each nd In frm.tvTools.Nodes
                         CType(nd.Tag, clsToolLayer).Hidden = Not nd.Checked
                         CType(nd.Tag, clsToolLayer).Color = nd.ForeColor
@@ -679,10 +644,10 @@ Friend Class frmBasicViewer
         mSetup.ReloadCurrentMachine()
         tsbRefresh.PerformClick()
         InitAllViews()
-        MG_Viewer1.FindExtents()
-        MG_Viewer2.FindExtents()
-        MG_Viewer3.FindExtents()
-        MG_Viewer4.FindExtents()
+        MG_Viewer1.FindViewExtents()
+        MG_Viewer2.FindViewExtents()
+        MG_Viewer3.FindViewExtents()
+        MG_Viewer4.FindViewExtents()
         MG_ViewerCurrent.LimitsColor = My.Settings.ViewerLimitsColor
 
         MG_ViewerCurrent.Redraw(True)
@@ -740,13 +705,6 @@ Friend Class frmBasicViewer
         End Try
     End Sub
 
-    Private Sub PrintGraphics_PrintPage(ByVal sender As System.Object, ByVal e As System.Drawing.Printing.PrintPageEventArgs) Handles PrnDoc.PrintPage
-        If MG_ViewerCurrent IsNot Nothing Then
-            MG_ViewerCurrent.PrintScreen(e, e.MarginBounds, My.Settings.ViewerPrintMode, mSetup.Machine.MachineUnits, My.Settings.ViewPrintScale)
-            e.HasMorePages = False
-        End If
-    End Sub
-
     Private Sub mnuWebSite_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles mnuWebSite.Click, mnuWeb.Click
         Try
             System.Diagnostics.Process.Start(My.Resources.datBasicViewerUrl & My.Application.Info.Version.ToString)
@@ -757,7 +715,7 @@ Friend Class frmBasicViewer
 
     Private Sub tsbBackColor_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles tsbBackColor.Click
         With Me.ColorDialog1
-            If .ShowDialog() = Windows.Forms.DialogResult.OK Then
+            If .ShowDialog() = System.Windows.Forms.DialogResult.OK Then
                 SetViewersBgColor(.Color)
                 My.Settings.ViewsBackColor = .Color
             End If
@@ -785,7 +743,7 @@ Friend Class frmBasicViewer
             .SelectLastElement()
             .DrawTextOverlay(.RangeEnd.ToString & " - " & .RangeMax.ToString)
             If MG_ViewerCurrent.RangeEnd > 0 Then
-                HighlightLine(MG_ViewerCurrent.MotionRecords(MG_ViewerCurrent.RangeEnd).Linenumber)
+                HighlightLine(MG_ViewerCurrent.AllMotionRecords(MG_ViewerCurrent.RangeEnd).Linenumber)
             End If
 
         End With
@@ -871,14 +829,14 @@ Friend Class frmBasicViewer
 
             If NC_Player.OptionStop Then
                 For r As Integer = .RangeEnd To bpv
-                    If NC_Player.LastTool <> .MotionRecords(r).Tool Then
-                        NC_Player.LastTool = .MotionRecords(r).Tool
+                    If NC_Player.LastTool <> .AllMotionRecords(r).Tool Then
+                        NC_Player.LastTool = .AllMotionRecords(r).Tool
                         NC_Player.StopPlay()
                         bpv = r
                         Exit For
                     End If
                     If r = .RangeMax Then
-                        NC_Player.LastTool = .MotionRecords(0).Tool
+                        NC_Player.LastTool = .AllMotionRecords(0).Tool
                         NC_Player.StopPlay()
                         bpv = r
                         Exit For
@@ -908,7 +866,7 @@ Friend Class frmBasicViewer
         End Try
     End Sub
 
-    Private Sub MG_Viewer_OnSlowDrawingAlert(ByVal vewCtrl As MacGen.MG_BasicViewer) Handles MG_Viewer1.OnSlowDrawingAlert
+    Private Sub MG_Viewer_OnSlowDrawingAlert(ByVal vewCtrl As MG_BasicViewer) Handles MG_Viewer1.OnSlowDrawingAlert
         Dim msg As String = Environment.NewLine & "World = " & vewCtrl.ViewRect.ToString
         If MsgBox(My.Resources.msgSlowGfxPerf & msg, MsgBoxStyle.YesNo Or MsgBoxStyle.Information, "Graphics Performance") = MsgBoxResult.Yes Then
             vewCtrl.CancelCreateDisplayList(True)
@@ -944,7 +902,7 @@ Friend Class frmBasicViewer
                     frm.Location = loc
 
 
-                    If frm.ShowDialog() = Windows.Forms.DialogResult.OK Then
+                    If frm.ShowDialog() = System.Windows.Forms.DialogResult.OK Then
                         If frm.txtUpper.Text.Length > 0 AndAlso frm.txtLower.Text.Length > 0 Then
                             .FilterZ = True
                             .FilterUpperZ = Single.Parse(frm.txtUpper.Text, Globalization.NumberFormatInfo.InvariantInfo)
@@ -1135,7 +1093,7 @@ Friend Class frmBasicViewer
             RTB.ClearLineHighlight()
             Dim st As Integer = RTB.GetLineFromCharIndex(RTB.SelectionStart)
             Dim en As Integer = RTB.GetLineFromCharIndex(RTB.SelectionStart + RTB.SelectionLength)
-            MG_ViewerCurrent.SetSelectionHits(st, en, 0)
+            MG_ViewerCurrent.SetSelectionHits(st + 1, en + 1, 0)
         Catch ex As Exception
             mLog.LogError(ex)
         End Try
@@ -1167,10 +1125,10 @@ Friend Class frmBasicViewer
         Try
             ProcessText()
             If tsbAutoZoom.Checked Then
-                MG_Viewer1.FindExtents()
-                MG_Viewer2.FindExtents()
-                MG_Viewer3.FindExtents()
-                MG_Viewer4.FindExtents()
+                MG_Viewer1.FindViewExtents()
+                MG_Viewer2.FindViewExtents()
+                MG_Viewer3.FindViewExtents()
+                MG_Viewer4.FindViewExtents()
             End If
             MG_ViewerCurrent.Redraw(True)
         Catch ex As Exception
@@ -1187,7 +1145,7 @@ Friend Class frmBasicViewer
                 .Title = "Save"
                 .CheckPathExists = False
                 .CheckFileExists = False
-                If .ShowDialog() = Windows.Forms.DialogResult.OK Then
+                If .ShowDialog() = System.Windows.Forms.DialogResult.OK Then
                     SaveFile(.FileName)
                     RTB.FileName = .FileName
                     mLastFolder = Path.GetFullPath(.FileName)
@@ -1239,10 +1197,10 @@ Friend Class frmBasicViewer
             ColorVisibleRangeText(True)
             ProcessText()
             If tsbAutoZoom.Checked Then
-                MG_Viewer1.FindExtents()
-                MG_Viewer2.FindExtents()
-                MG_Viewer3.FindExtents()
-                MG_Viewer4.FindExtents()
+                MG_Viewer1.FindViewExtents()
+                MG_Viewer2.FindViewExtents()
+                MG_Viewer3.FindViewExtents()
+                MG_Viewer4.FindViewExtents()
             End If
             MG_ViewerCurrent.Redraw(True)
         End If

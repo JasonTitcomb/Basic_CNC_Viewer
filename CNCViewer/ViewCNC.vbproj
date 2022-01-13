@@ -22,12 +22,12 @@
     <FileUpgradeFlags>
     </FileUpgradeFlags>
     <OptionCompare>Text</OptionCompare>
-    <OptionStrict>On</OptionStrict>
+    <OptionStrict>Off</OptionStrict>
     <OldToolsVersion>3.5</OldToolsVersion>
     <UpgradeBackupLocation>
     </UpgradeBackupLocation>
     <IsWebBootstrapper>false</IsWebBootstrapper>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <SignManifests>false</SignManifests>
     <SignAssembly>false</SignAssembly>
     <GenerateManifests>false</GenerateManifests>
@@ -71,10 +71,12 @@
     <DefineTrace>True</DefineTrace>
     <DefineConstants>Win32=True</DefineConstants>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <NoWarn>42353,42354,42355</NoWarn>
+    <NoWarn>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036,42353,42354,42355</NoWarn>
     <DebugType>full</DebugType>
     <UseVSHostingProcess>true</UseVSHostingProcess>
-    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+    <WarningsAsErrors>
+    </WarningsAsErrors>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <OutputPath>bin\Release\</OutputPath>
@@ -85,10 +87,12 @@
     <DefineTrace>True</DefineTrace>
     <DefineConstants>Win32=True</DefineConstants>
     <PlatformTarget>x86</PlatformTarget>
-    <NoWarn>42353,42354,42355</NoWarn>
+    <NoWarn>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036,42353,42354,42355</NoWarn>
     <DebugType>pdbonly</DebugType>
-    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+    <WarningsAsErrors>
+    </WarningsAsErrors>
     <Optimize>true</Optimize>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <DebugSymbols>true</DebugSymbols>
@@ -98,8 +102,10 @@
     <DefineConstants>Win32=True</DefineConstants>
     <DebugType>full</DebugType>
     <PlatformTarget>x86</PlatformTarget>
-    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
-    <NoWarn>42353,42354,42355</NoWarn>
+    <WarningsAsErrors>
+    </WarningsAsErrors>
+    <NoWarn>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036,42353,42354,42355</NoWarn>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
     <DebugSymbols>true</DebugSymbols>
@@ -109,11 +115,24 @@
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>
     <PlatformTarget>x86</PlatformTarget>
-    <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+    <WarningsAsErrors>
+    </WarningsAsErrors>
     <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
-    <NoWarn>42353,42354,42355</NoWarn>
+    <NoWarn>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036,42353,42354,42355</NoWarn>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OptionInfer>On</OptionInfer>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="abacus, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>packages\Abacus.0.9.2\lib\abacus.dll</HintPath>
+    </Reference>
+    <Reference Include="ICSharpCode.AvalonEdit, Version=6.1.3.50, Culture=neutral, PublicKeyToken=9cc39be672370310, processorArchitecture=MSIL">
+      <HintPath>packages\AvalonEdit.6.1.3.50\lib\net45\ICSharpCode.AvalonEdit.dll</HintPath>
+    </Reference>
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
     <Reference Include="System">
       <Name>System</Name>
     </Reference>
@@ -126,6 +145,7 @@
       <Name>System.Windows.Forms</Name>
     </Reference>
     <Reference Include="System.Xml" />
+    <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
     <Import Include="MacGen" />
@@ -140,11 +160,16 @@
   <ItemGroup>
     <Compile Include="ApplicationEvents.vb" />
     <Compile Include="AssemblyInfo.vb" />
+    <Compile Include="BasicNCViewer\clsArcBall.vb" />
     <Compile Include="BasicNCViewer\clsCadRect.vb" />
     <Compile Include="BasicNCViewer\clsColorBar.vb" />
     <Compile Include="BasicNCViewer\clsDisplayList.vb" />
+    <Compile Include="BasicNCViewer\clsDisplayList2D.vb" />
+    <Compile Include="BasicNCViewer\clsDisplayLists3D.vb" />
+    <Compile Include="BasicNCViewer\clsMeasureElement.vb" />
     <Compile Include="BasicNCViewer\clsMotionRecord.vb" />
     <Compile Include="BasicNCViewer\clsToolLayer.vb" />
+    <Compile Include="BasicNCViewer\clsUserRecord.vb" />
     <Compile Include="BasicNCViewer\DisplayException.vb" />
     <Compile Include="BasicNCViewer\frmGraphicsDetails.Designer.vb">
       <DependentUpon>frmGraphicsDetails.vb</DependentUpon>
@@ -167,6 +192,8 @@
     <Compile Include="BasicNCViewer\MG_Graph.vb">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="BasicNCViewer\SavedView.vb" />
+    <Compile Include="BasicNCViewer\TRackBall.vb" />
     <Compile Include="ColorCombo.designer.vb">
       <DependentUpon>ColorCombo.vb</DependentUpon>
     </Compile>
@@ -177,6 +204,8 @@
     <Compile Include="MG_ToolStripColorSplitButton.vb">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="NcParser\clsBlendCalculatorXY.vb" />
+    <Compile Include="NcParser\clsWorldOffset.vb" />
     <Compile Include="RichTextBox\clsColorScheme.vb" />
     <Compile Include="RichTextBox\clsColorSettings.vb" />
     <Compile Include="clsLogger.vb" />
@@ -222,6 +251,7 @@
     <Compile Include="My Project\Application.Designer.vb">
       <AutoGen>True</AutoGen>
       <DependentUpon>Application.myapp</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
     <Compile Include="My Project\Resources.Designer.vb">
       <AutoGen>True</AutoGen>
@@ -238,7 +268,6 @@
     <Compile Include="NcParser\clsMotion.vb" />
     <Compile Include="NcParser\clsParseError.vb" />
     <Compile Include="NcParser\clsParser.vb" />
-    <Compile Include="NcParser\clsParserException.vb" />
     <Compile Include="NcParser\clsProg.vb" />
     <Compile Include="NcParser\clsSettings.vb" />
     <Compile Include="NC_Player.Designer.vb">
@@ -260,6 +289,17 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="ToolStripImageLoader.vb" />
+    <None Include="packages.config" />
+    <None Include="Resources\setrotate.cur" />
+    <None Include="Resources\select1.cur" />
+    <None Include="Resources\selectetc1.cur" />
+    <None Include="Resources\measurekeypoint.cur" />
+    <None Include="Resources\measure.cur" />
+    <None Include="Resources\setrotate_32.png" />
+    <None Include="Resources\setrotate_16.png" />
+    <None Include="Resources\measure_32.png" />
+    <None Include="Resources\measure_16.png" />
+    <EmbeddedResource Include="MG_BasicViewer.resx" />
     <EmbeddedResource Include="RichTextBox\MG_RichTextBox.resx">
       <DependentUpon>MG_RichTextBox.vb</DependentUpon>
     </EmbeddedResource>
@@ -287,9 +327,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="BasicNCViewer\frmQuickPick.resx">
       <DependentUpon>frmQuickPick.vb</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="BasicNCViewer\MG_BasicViewer.resx">
-      <DependentUpon>MG_BasicViewer.vb</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="NC_Player.resx">
       <DependentUpon>NC_Player.vb</DependentUpon>

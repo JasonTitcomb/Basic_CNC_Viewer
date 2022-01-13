@@ -1,28 +1,29 @@
-''' <summary>
-''' Custom rectangle
-''' </summary>
 ''' <remarks>
+''' Jason Titcomb
+''' www.CncEdit.com
+''' https://github.com/JasonTitcomb/Basic_CNC_Viewer/blob/master/LICENSE.md
+''' </remarks>
 Public Class clsCadRect
-    Private mX As Single
+    Private mXval As Single
     Public Property X() As Single
         Get
-            Return mX
+            Return mXval
         End Get
         Set(ByVal value As Single)
-            mX = value
-            mLeft = mX
+            mXval = value
+            mLeft = mXval
             mRight = mLeft + mWidth
         End Set
     End Property
-    Private my As Single
+    Private mYval As Single
     Public Property Y() As Single
         Get
-            Return my
+            Return mYval
         End Get
         Set(ByVal value As Single)
-            my = value
-            mTop = my + mHeight
-            mBottom = my
+            mYval = value
+            mTop = mYval + mHeight
+            mBottom = mYval
         End Set
     End Property
     Private mLeft As Single
@@ -54,7 +55,7 @@ Public Class clsCadRect
         End Get
         Set(ByVal value As Single)
             mHeight = value
-            mTop = my + mHeight
+            mTop = mYval + mHeight
         End Set
     End Property
     Private mTop As Single
@@ -64,12 +65,22 @@ Public Class clsCadRect
         End Get
     End Property
     Private mBottom As Single
+
     Public ReadOnly Property Bottom() As Single
         Get
             Return mBottom
         End Get
     End Property
-
+    Public ReadOnly Property CenterX As Single
+        Get
+            Return (Left + Right) / 2
+        End Get
+    End Property
+    Public ReadOnly Property CenterY As Single
+        Get
+            Return (Top + Bottom) / 2
+        End Get
+    End Property
     Public Sub New()
         X = 0
         Y = 0
@@ -83,37 +94,45 @@ Public Class clsCadRect
         Me.Width = width
         Me.Height = height
     End Sub
+    Public Function Contains(p1 As PointF) As Boolean
+        Return p1.X > Left AndAlso p1.X < Right AndAlso p1.Y > Bottom AndAlso p1.Y < Top
+    End Function
 
     Public Function Contains(ByVal x As Single, ByVal y As Single) As Boolean
         Return x > Left AndAlso x < Right AndAlso y > Bottom AndAlso y < Top
     End Function
 
-    Public Function IntersectsLine(ByVal p1 As PointF, ByVal p2 As PointF) As Boolean
+    Public Function IntersectsLine(p1 As PointF, p2 As PointF) As Single
         Return IntersectsLine(p1.X, p1.Y, p2.X, p2.Y)
     End Function
 
-    Public Function IntersectsLine(ByVal x1 As Single, ByVal y1 As Single, ByVal x2 As Single, ByVal y2 As Single) As Boolean
+    Public Function IntersectsLine(x1 As Single, y1 As Single, x2 As Single, y2 As Single) As Single
         'Trivial test completely inside
-        If Me.Contains(x1, y1) OrElse Me.Contains(x2, y2) Then
-            Return True
+        If Contains(x1, y1) Then
+            Return 0
         End If
-        'Trivial test outside
-        If x1 < Me.Left AndAlso x2 < Me.Left Then
-            Return False
-        ElseIf x1 > Me.Right AndAlso x2 > Me.Right Then
-            Return False
-        ElseIf y1 < Me.Bottom AndAlso y2 < Me.Bottom Then
-            Return False
-        ElseIf y1 > Me.Top AndAlso y2 > Me.Top Then
-            Return False
+        If Contains(x2, y2) Then
+            Return 1
         End If
 
+        'Trivial test outside
+        If x1 < Left AndAlso x2 < Left Then
+            Return -1
+        ElseIf x1 > Right AndAlso x2 > Right Then
+            Return -1
+        ElseIf y1 < Bottom AndAlso y2 < Bottom Then
+            Return -1
+        ElseIf y1 > Top AndAlso y2 > Top Then
+            Return -1
+        End If
+        Dim ctrX = (Left + Right) / 2
+        Dim ctrY = (Top + Bottom) / 2
         'Trivial test vertical or horizontal
         If x1 = x2 Then
-            Return True
+            Return mag(ctrX, ctrY, x1, y1, x2, y2)
         End If
         If y1 = y2 Then
-            Return True
+            Return mag(ctrX, ctrY, x1, y1, x2, y2)
         End If
 
         Dim slope As Single = (y2 - y1) / (x2 - x1)
@@ -121,33 +140,42 @@ Public Class clsCadRect
         Dim iptX As Single
         Dim iptY As Single
 
-        'Left edge
-        iptX = Me.Left
+        'Left edge of selrect
+        iptX = Left
         iptY = (slope * iptX) + Yintercept
-        If iptY > Me.Bottom AndAlso iptY < Me.Top Then
-            Return True
+        If iptY > Bottom AndAlso iptY < Top Then
+            Return mag(ctrX, ctrY, x1, y1, x2, y2)
         End If
 
         'Right edge
-        iptX = Me.Right
-        If iptY > Me.Bottom AndAlso iptY < Me.Top Then
-            Return True
+        iptX = Right
+        If iptY > Bottom AndAlso iptY < Top Then
+            Return mag(ctrX, ctrY, x1, y1, x2, y2)
         End If
 
         'Top edge
-        iptY = Me.Top
+        iptY = Top
         iptX = ((iptY - Yintercept) / slope)
-        If iptX > Me.Left AndAlso iptX < Me.Right Then
-            Return True
+        If iptX > Left AndAlso iptX < Right Then
+            Return mag(ctrX, ctrY, x1, y1, x2, y2)
         End If
 
         'Bottom edge
-        iptY = Me.Bottom
+        iptY = Bottom
         iptX = ((iptY - Yintercept) / slope)
-        If iptX > Me.Left AndAlso iptX < Me.Right Then
-            Return True
+        If iptX > Left AndAlso iptX < Right Then
+            Return mag(ctrX, ctrY, x1, y1, x2, y2)
         End If
-        Return False
+        Return -1
+    End Function
+    Private Function mag(ctrx As Single, ctry As Single, x1 As Single, y1 As Single, x2 As Single, y2 As Single) As Single
+        Dim d1 = Distance2(ctrx, ctry, x1, y1)
+        Dim d2 = Distance2(ctrx, ctry, x2, y2)
+        Return d1 / (d1 + d2)
+    End Function
+
+    Private Function Distance2(X1 As Single, Y1 As Single, x2 As Single, y2 As Single) As Single
+        Return Math.Sqrt(((X1 - x2) ^ 2) + ((Y1 - y2) ^ 2))
     End Function
 
 End Class

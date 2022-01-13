@@ -1,5 +1,5 @@
-<Windows.Forms.Design.ToolStripItemDesignerAvailability _
-(Windows.Forms.Design.ToolStripItemDesignerAvailability.ToolStrip)>
+<System.Windows.Forms.Design.ToolStripItemDesignerAvailability _
+(System.Windows.Forms.Design.ToolStripItemDesignerAvailability.ToolStrip)>
 Friend Class ToolStripSlider
     Inherits ToolStripControlHost
     Public ReadOnly Property TrackBar() As TrackBar

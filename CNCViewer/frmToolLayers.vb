@@ -23,7 +23,7 @@ Friend Class frmToolLayers
         Using ColorDialog1
             With ColorDialog1
                 .Color = tvTools.SelectedNode.ForeColor
-                If .ShowDialog = Windows.Forms.DialogResult.OK Then
+                If .ShowDialog = System.Windows.Forms.DialogResult.OK Then
                     tvTools.SelectedNode.ForeColor = .Color
                 End If
             End With

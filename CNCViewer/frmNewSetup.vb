@@ -3,13 +3,13 @@ Option Explicit On
 Friend Class frmNewSetup
     Inherits System.Windows.Forms.Form
 
-    Public Overloads Function ShowDialog(ByVal name As String) As Windows.Forms.DialogResult
+    Public Overloads Function ShowDialog(ByVal name As String) As System.Windows.Forms.DialogResult
         txtName.Text = name
         Return MyBase.ShowDialog()
     End Function
 
     Private Sub cmdCancel_Click(ByVal eventSender As System.Object, ByVal eventArgs As System.EventArgs) Handles cmdCancel.Click
-        Me.DialogResult = Windows.Forms.DialogResult.Cancel
+        Me.DialogResult = System.Windows.Forms.DialogResult.Cancel
         Me.Close()
     End Sub
 
@@ -20,7 +20,7 @@ Friend Class frmNewSetup
     End Property
 
     Private Sub cmdOK_Click(ByVal eventSender As System.Object, ByVal eventArgs As System.EventArgs) Handles cmdOK.Click
-        Me.DialogResult = Windows.Forms.DialogResult.OK
+        Me.DialogResult = System.Windows.Forms.DialogResult.OK
         Me.Hide()
     End Sub
 

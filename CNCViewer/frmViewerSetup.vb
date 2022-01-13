@@ -1,12 +1,14 @@
 Option Strict On
 Option Explicit On
+Imports System.ComponentModel
+Imports System.Text.RegularExpressions
+
 Friend Class frmViewerSetup
     Inherits System.Windows.Forms.Form
     Private WithEvents mLog As clsLogger = clsLogger.Instance
     Private WithEvents mSetup As clsSettings = clsSettings.Instance
     Private mMachine As clsMachine
     Private mDirty As Boolean
-    Private mSelToolClrRect As New Rectangle(0, 0, 16, 32)
     Private mToolIndex As Integer = -1
     Private Const FORCE_DECIMAL As String = "INTEGER"
 
@@ -57,7 +59,7 @@ Friend Class frmViewerSetup
         DirtySetup = True
     End Sub
 
-    Private Sub chkUVW_CheckStateChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles chkUVW.CheckStateChanged, chkInvertArcCenterValues.CheckStateChanged
+    Private Sub chkUVW_CheckStateChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles chkUVW.CheckStateChanged, chkInvertArcCenterValues.CheckStateChanged, chkTaperUsingA.CheckStateChanged
         DirtySetup = True
     End Sub
     Private Sub chkReverseRot_CheckStateChanged(ByVal eventSender As System.Object, ByVal eventArgs As System.EventArgs) Handles chkReverseRot.CheckStateChanged
@@ -71,25 +73,9 @@ Friend Class frmViewerSetup
                 DirtySetup = False
             End If
             My.Settings.ViewerSetupLocation = Me.Location
+            My.Settings.GDIScaleFactor = cboScaleInternal.Text
+            My.Settings.EditorEncoding = cboTextEncoding.Text
 
-            If rdoPrintAsShown.Checked Then
-                My.Settings.ViewerPrintMode = 0
-            End If
-            If rdoPrintActualSize.Checked Then
-                My.Settings.ViewerPrintMode = 1
-            End If
-
-            If rdoPrintScaled.Checked Then
-                My.Settings.ViewerPrintMode = 2
-            End If
-
-            My.Settings.MotionColorRapid = cboRapidColor.SelectedColor
-            My.Settings.MotionColorLinear = cboLineColor.SelectedColor
-            My.Settings.MotionColorCCWArc = cboCCWarcColor.SelectedColor
-            My.Settings.MotionColorCWArc = cboCWarcColor.SelectedColor
-
-
-            My.Settings.ViewPrintScale = Single.Parse(txtPrintScale.Text, Globalization.NumberFormatInfo.InvariantInfo)
             mSetup = Nothing
             mLog = Nothing
         Catch ex As Exception
@@ -102,7 +88,7 @@ Friend Class frmViewerSetup
             Dim curMachine As String = mSetup.Machine.Name
             Me.Location = My.Settings.ViewerSetupLocation
             cboPrecision.Items.Add(FORCE_DECIMAL)
-
+            cboTextEncoding.SelectedIndex = cboTextEncoding.FindStringExact(My.Settings.EditorEncoding)
             EnsureFormIsOnScreen(Me)
 
             mSetup.LoadAllMachines()
@@ -125,7 +111,11 @@ Friend Class frmViewerSetup
             cboSize.Text = CStr(CInt(My.Settings.ViewerOverlayFont.Size))
             cboFont.Text = My.Settings.ViewerOverlayFont.FontFamily.Name
             chkShowExtraOverlayInfo.Checked = My.Settings.ViewerShowExtraOverlayDetails
+
             chkReverseMouseWheel.Checked = My.Settings.ReverseMouseWheel
+            chkMB2Pan.Checked = My.Settings.MB2Pan
+            txtMB2ZoomFactor.Text = My.Settings.ScrollZoomAdjust.ToString
+
             Select Case My.Settings.ViewerPrintMode
                 Case 0
                     rdoPrintAsShown.Checked = True
@@ -140,6 +130,8 @@ Friend Class frmViewerSetup
             cboLineColor.SelectedColor = My.Settings.MotionColorLinear
             cboCCWarcColor.SelectedColor = My.Settings.MotionColorCCWArc
             cboCWarcColor.SelectedColor = My.Settings.MotionColorCWArc
+
+            cboScaleInternal.SelectedIndex = cboScaleInternal.FindStringExact(My.Settings.GDIScaleFactor.ToString)
 
             DirtySetup = False
             Me.MG_Viewer1.Init()
@@ -192,7 +184,7 @@ Friend Class frmViewerSetup
         End If
 
         Using frm As New frmNewSetup
-            If frmNewSetup.ShowDialog() = Windows.Forms.DialogResult.OK Then
+            If frmNewSetup.ShowDialog() = DialogResult.OK Then
                 newname = frmNewSetup.GetName
                 frmNewSetup.Close()
             Else
@@ -226,7 +218,7 @@ Friend Class frmViewerSetup
 
             Using frm As New frmNewSetup
                 Do
-                    If frmNewSetup.ShowDialog(newName) = Windows.Forms.DialogResult.OK Then
+                    If frmNewSetup.ShowDialog(newName) = DialogResult.OK Then
                         newName = frmNewSetup.GetName
                         frmNewSetup.Close()
                     Else
@@ -249,7 +241,6 @@ Friend Class frmViewerSetup
             mLog.LogError(ex)
         End Try
     End Sub
-
 
     Public Sub mnuSave_Click(ByVal eventSender As System.Object, ByVal eventArgs As System.EventArgs) Handles tsbSaveFile.Click
         SaveFields(mMachine.Name)
@@ -285,6 +276,8 @@ Friend Class frmViewerSetup
             txtCWarc.Text = "G02"
             txtAbs.Text = "G90"
             txtInc.Text = "G91"
+            txtAbsIJK.Text = "G90.1"
+            txtIncIJK.Text = "G91.1"
             txtCompLeft.Text = "G41"
             txtCompRight.Text = "G42"
             txtCompCancel.Text = "G40"
@@ -311,9 +304,6 @@ Friend Class frmViewerSetup
             txtRotAxis.Text = "B"
             cboRotAxis.SelectedIndex = 2 'X
             chkReverseRot.CheckState = System.Windows.Forms.CheckState.Unchecked
-            txtViewShift_0.Text = "0.0"
-            txtViewShift_1.Text = "0.0"
-            txtViewShift_2.Text = "0.0"
             Me.optRotateType1.Checked = True
             txtReturnHome.Text = "G28"
             txtToolChange.Text = "M06"
@@ -330,6 +320,11 @@ Friend Class frmViewerSetup
             txtUnitsEnglish.Text = "G20"
             txtUnitsMetric.Text = "G21"
             cboUnits.SelectedIndex = 0
+            txtWorkOffsetsCancel.Text = "G53"
+            txtG52.Text = "G52"
+            txtG92.Text = "G92"
+            txtWorkOffsets.Text = "G54,0,0,0,0"
+            chkAllowG10.Checked = True
             mSetup.AddMachine(newname)
             SaveFields(newname)
             mSetup.MachineName = newname
@@ -342,13 +337,16 @@ Friend Class frmViewerSetup
 
     Private Sub FillFields()
         Try
-            Me.chkIgnoreSpaces.Checked = My.Settings.IgnoreFileWhitespace
+            Me.chkIgnoreSpaces.Checked = My.Settings.IgnoreWhitespace
             With mMachine
 
                 txtDescription.Text = .Description
                 txtGlobalReplacements.Text = .GlobalReplacements
                 txtProgramId.Text = .ProgramId
-                txtSubcall.Text = .Subcall
+                txtSubcall.Text = .ExternalCall
+                txtInternalSubCall.Text = .InternalCall
+                txtExternalParam.Text = .ExternalCallParam
+                txtInternalParam.Text = .InternalCallParam
                 txtSubRepeats.Text = .SubRepeats
                 txtReturn.Text = .SubReturn
                 txtEndmain.Text = .Endmain
@@ -360,7 +358,7 @@ Friend Class frmViewerSetup
                     cboPrecision.SelectedIndex = .Precision - 1
                 End If
 
-                cboUnits.SelectedIndex = .MachineUnits
+                cboUnits.SelectedIndex = CInt(IIf(.MachineUnits = MachineUnits.ENGLISH, 0, 1))
                 txtUnitsEnglish.Text = .UnitsEnglishAddress
                 txtUnitsMetric.Text = .UnitsMetricAddress
 
@@ -379,7 +377,7 @@ Friend Class frmViewerSetup
                 txtMaxRpmCode.Text = .MaxRpmAddress
                 txtMaxRPMDefault.Text = .MaxRpmValue.ToString("#0.0#", System.Globalization.NumberFormatInfo.InvariantInfo)
                 chkDogLeg.Checked = .DogLegMotion
-
+                chkAllowG10.Checked = .AllowG10
                 txtSearch.Text = .Searchstring
                 txtRapid.Text = .Rapid
                 txtLinear.Text = .Linear
@@ -393,10 +391,16 @@ Friend Class frmViewerSetup
                 txtCompLeft.Text = .CompLeft
                 txtCompRight.Text = .CompRight
                 txtCompCancel.Text = .CompCancel
-
+                txtIncIJK.Text = .IncIJK
+                txtAbsIJK.Text = .AbsIJK
                 txtViewShift_0.Text = .ViewShift(0).ToString("#0.0#", System.Globalization.NumberFormatInfo.InvariantInfo)
                 txtViewShift_1.Text = .ViewShift(1).ToString("#0.0#", System.Globalization.NumberFormatInfo.InvariantInfo)
                 txtViewShift_2.Text = .ViewShift(2).ToString("#0.0#", System.Globalization.NumberFormatInfo.InvariantInfo)
+
+                chkInvertX.Checked = (.Invert(0) = -1)
+                chkInvertY.Checked = (.Invert(1) = -1)
+                chkInvertZ.Checked = (.Invert(2) = -1)
+                chkInvertABC.Checked = (.Invert(3) = -1)
 
                 Me.MG_Viewer1.Pitch = .ViewAngles(0)
                 Me.MG_Viewer1.Roll = .ViewAngles(1)
@@ -418,7 +422,8 @@ Friend Class frmViewerSetup
                 chkReverseRot.Checked = (.RotaryDir = RotaryDirection.CCW)
                 chkUVW.Checked = .UseUVW
                 chkInvertArcCenterValues.Checked = .InvertArcCenterValues
-
+                chkCornerRounding.Checked = .CornerTreatments
+                chkTaperUsingA.Checked = .AllowTaper
 
                 'Home
                 txtToolChange.Text = .ToolChange
@@ -436,6 +441,31 @@ Friend Class frmViewerSetup
                 txtMinY.Text = .Limits(3).ToString("###0.0####")
                 txtMaxZ.Text = .Limits(4).ToString("###0.0####")
                 txtMinZ.Text = .Limits(5).ToString("###0.0####")
+
+                txtG52.Text = .WorkOffsetG52
+                txtWorkOffsetsCancel.Text = .WorkOffsetCancel
+                txtG92.Text = .WorkOffsetTemp
+                txtWorkOffsets.Text = .WorkOffsets
+
+                txtG68.Text = .G68RotOn
+                txtG69.Text = .G68RotOff
+                txtXctrRot.Text = .G68RotX
+                txtYctrRot.Text = .G68RotY
+                txtAngleRot.Text = .G68RotR
+
+                txtG51.Text = .G51ScaleOn
+                txtG50.Text = .G51ScaleOff
+                txtEnableMirror.Text = .MirrorOn
+                txtCancelMirror.Text = .MirrorOff
+                txtMirrorX.Text = .MirrorX
+                txtMirrorY.Text = .MirrorY
+                txtMirrorZ.Text = .MirrorZ
+
+                txtXctrScale.Text = .G51ScaleX
+                txtYctrScale.Text = .G51ScaleY
+                txtZctrScale.Text = .G51ScaleZ
+                txtScaleValue.Text = .G51ScaleFactor
+
             End With
 
 
@@ -451,34 +481,68 @@ Friend Class frmViewerSetup
         Dim tagText As String
         If mMachine Is Nothing Then Return
 
-        My.Settings.IgnoreFileWhitespace = chkIgnoreSpaces.Checked
+        My.Settings.IgnoreWhitespace = chkIgnoreSpaces.Checked
+        If rdoPrintAsShown.Checked Then
+            My.Settings.ViewerPrintMode = 0
+        End If
+        If rdoPrintActualSize.Checked Then
+            My.Settings.ViewerPrintMode = 1
+        End If
+
+        If rdoPrintScaled.Checked Then
+            My.Settings.ViewerPrintMode = 2
+        End If
+
+        My.Settings.MotionColorRapid = cboRapidColor.SelectedColor
+        My.Settings.MotionColorLinear = cboLineColor.SelectedColor
+        My.Settings.MotionColorCCWArc = cboCCWarcColor.SelectedColor
+        My.Settings.MotionColorCWArc = cboCWarcColor.SelectedColor
+
+        My.Settings.ReverseMouseWheel = chkReverseMouseWheel.Checked
+        MG_Viewer1.ReverseMouseWheel = My.Settings.ReverseMouseWheel
+        My.Settings.MB2Pan = chkMB2Pan.Checked
+        MG_Viewer1.MB2Pan = chkMB2Pan.Checked
+        My.Settings.ScrollZoomAdjust = Single.Parse(txtMB2ZoomFactor.Text)
+        MG_Viewer1.MouseWheelZoomFctor = My.Settings.ScrollZoomAdjust
+        My.Settings.ViewPrintScale = Single.Parse(txtPrintScale.Text, Globalization.NumberFormatInfo.InvariantInfo)
 
         Try
-            For Each tab As TabPage In Me.Tab1.TabPages
-                For Each t As Control In tab.Controls
-                    If Not t.Tag Is Nothing Then
-                        tagText = t.Tag.ToString
-                        If tagText.Contains("Required") AndAlso t.Text.Length = 0 Then
-                            Tab1.SelectedIndex = CInt(Val(tagText))
-                            t.Focus()
-                            MsgBox("Field information required", MsgBoxStyle.MsgBoxSetForeground, "Blank Field")
-                            Exit For
-                        End If
-                    End If
-                Next
+            Dim checkLoop As Action(Of Control) = Sub(c As Control)
+                                                      For Each t As Control In c.Controls
+                                                          If TypeOf (t) Is GroupBox Then
+                                                              checkLoop(t)
+                                                          End If
+                                                          If Not t.Tag Is Nothing Then
+                                                              tagText = t.Tag.ToString
+                                                              If tagText.Contains("Required") AndAlso t.Text.Length = 0 Then
+                                                                  Tabs1.SelectedIndex = CInt(Val(tagText))
+                                                                  t.Focus()
+                                                                  MsgBox("Field information required", MsgBoxStyle.MsgBoxSetForeground, "Blank Field")
+                                                                  Exit For
+                                                              End If
+                                                          End If
+                                                      Next
+
+                                                  End Sub
+
+            For Each tab As TabPage In Me.Tabs1.TabPages
+                checkLoop(tab)
             Next
 
             With mMachine
 
                 .Name = name
-                .MachineUnits = CType(cboUnits.SelectedIndex, MachineUnits)
+                .MachineUnits = CType(IIf(cboUnits.SelectedIndex = 0, MachineUnits.ENGLISH, MachineUnits.METRIC), MachineUnits)
                 .UnitsEnglishAddress = txtUnitsEnglish.Text
                 .UnitsMetricAddress = txtUnitsMetric.Text
 
                 .Description = txtDescription.Text.Trim
                 .GlobalReplacements = txtGlobalReplacements.Text
                 .ProgramId = txtProgramId.Text.Trim
-                .Subcall = txtSubcall.Text.Trim
+                .ExternalCall = txtSubcall.Text.Trim
+                .InternalCall = txtInternalSubCall.Text.Trim
+                .ExternalCallParam = txtExternalParam.Text.Trim
+                .InternalCallParam = txtInternalParam.Text.Trim
                 .SubRepeats = txtSubRepeats.Text.Trim
                 .SubReturn = txtReturn.Text.Trim
                 .Endmain = txtEndmain.Text.Trim
@@ -488,7 +552,7 @@ Friend Class frmViewerSetup
                 .MaxRpmAddress = txtMaxRpmCode.Text
                 .MaxRpmValue = Single.Parse(txtMaxRPMDefault.Text, System.Globalization.NumberFormatInfo.InvariantInfo)
                 .DogLegMotion = chkDogLeg.Checked
-
+                .AllowG10 = chkAllowG10.Checked
                 If cboPrecision.Text = FORCE_DECIMAL Then
                     .Precision = 0
                 Else
@@ -505,6 +569,8 @@ Friend Class frmViewerSetup
                 .CompLeft = txtCompLeft.Text
                 .CompRight = txtCompRight.Text
                 .CompCancel = txtCompCancel.Text
+                .IncIJK = txtIncIJK.Text
+                .AbsIJK = txtAbsIJK.Text
 
                 .XYplane = txtXYplane.Text.Trim
                 .XZplane = txtXZplane.Text.Trim
@@ -514,7 +580,7 @@ Friend Class frmViewerSetup
                 .FeedPrecision = cboFeedPrecision.SelectedIndex + -4
 
                 .Rotary = txtRotAxis.Text.Trim
-                .RotaryAxis = DirectCast(cboRotAxis.SelectedIndex, Axis)
+                .RotaryAxis = DirectCast(cboRotAxis.SelectedIndex, ArcAxis)
                 .RotaryType = DirectCast(CInt(Me.optRotateType1.Checked), RotaryMotionType)
                 .FeedModeMin = txtFeedModeMin.Text
                 .FeedModeRev = txtFeedModeRev.Text
@@ -531,6 +597,11 @@ Friend Class frmViewerSetup
                 .ViewShift(0) = Single.Parse(txtViewShift_0.Text, System.Globalization.NumberFormatInfo.InvariantInfo)
                 .ViewShift(1) = Single.Parse(txtViewShift_1.Text, System.Globalization.NumberFormatInfo.InvariantInfo)
                 .ViewShift(2) = Single.Parse(txtViewShift_2.Text, System.Globalization.NumberFormatInfo.InvariantInfo)
+
+                .Invert(0) = If(chkInvertX.Checked, -1, 1)
+                .Invert(1) = If(chkInvertY.Checked, -1, 1)
+                .Invert(2) = If(chkInvertZ.Checked, -1, 1)
+                .Invert(3) = If(chkInvertABC.Checked, -1, 1)
 
                 .ViewAngles(0) = Me.MG_Viewer1.Pitch
                 .ViewAngles(1) = Me.MG_Viewer1.Roll
@@ -567,6 +638,8 @@ Friend Class frmViewerSetup
 
                 .UseUVW = Me.chkUVW.Checked
                 .InvertArcCenterValues = chkInvertArcCenterValues.Checked
+                .CornerTreatments = chkCornerRounding.Checked
+                .AllowTaper = chkTaperUsingA.Checked
 
                 'Home
                 .ToolChange = txtToolChange.Text
@@ -585,6 +658,45 @@ Friend Class frmViewerSetup
                 .Limits(4) = Single.Parse(txtMaxZ.Text, Globalization.NumberFormatInfo.InvariantInfo)
                 .Limits(5) = Single.Parse(txtMinZ.Text, Globalization.NumberFormatInfo.InvariantInfo)
 
+                .WorkOffsetCancel = txtWorkOffsetsCancel.Text
+                .WorkOffsetG52 = txtG52.Text
+                .WorkOffsetTemp = txtG92.Text
+                If txtWorkOffsets.Lines.Length > 0 Then
+                    Dim formatok As Boolean = True
+                    For Each ln As String In txtWorkOffsets.Lines
+                        Dim arr As String() = ln.Split(","c)
+                        If arr.Length < 5 Then
+                            formatok = False
+                            Exit For
+                        End If
+                    Next
+                    If Not formatok Then
+                        txtWorkOffsets.Focus()
+                        MsgBox("G54,0,0,0,0", MsgBoxStyle.MsgBoxSetForeground, "Work Offset Format Error")
+                    End If
+
+                End If
+                .WorkOffsets = txtWorkOffsets.Text
+
+                .G68RotOn = txtG68.Text
+                .G68RotOff = txtG69.Text
+                .G68RotX = txtXctrRot.Text
+                .G68RotY = txtYctrRot.Text
+                .G68RotR = txtAngleRot.Text
+
+                .G51ScaleOn = txtG51.Text
+                .G51ScaleOff = txtG50.Text
+                .G51ScaleX = txtXctrScale.Text
+                .G51ScaleY = txtYctrScale.Text
+                .G51ScaleZ = txtZctrScale.Text
+                .G51ScaleFactor = txtScaleValue.Text
+
+                .MirrorOn = txtEnableMirror.Text
+                .MirrorOff = txtCancelMirror.Text
+                .MirrorX = txtMirrorX.Text
+                .MirrorY = txtMirrorY.Text
+                .MirrorZ = txtMirrorZ.Text
+
                 mSetup.SaveMachine(mMachine)
             End With
 
@@ -594,7 +706,7 @@ Friend Class frmViewerSetup
 
     End Sub
 
-    Private Sub ValidateKeys(ByVal sender As System.Object, ByVal e As System.Windows.Forms.KeyPressEventArgs) Handles txtSubRepeats.KeyPress, txtSubcall.KeyPress, txtReturn.KeyPress, txtProgramId.KeyPress, txtEndmain.KeyPress, txtBlockSkip.KeyPress, txtYZplane.KeyPress, txtXZplane.KeyPress, txtXYplane.KeyPress, txtRapid.KeyPress, txtLinear.KeyPress, txtInc.KeyPress, txtDrills_9.KeyPress, txtDrills_8.KeyPress, txtDrills_7.KeyPress, txtDrills_6.KeyPress, txtDrills_5.KeyPress, txtDrills_4.KeyPress, txtDrills_3.KeyPress, txtDrills_2.KeyPress, txtDrills_10.KeyPress, txtDrills_1.KeyPress, txtDrills_0.KeyPress, txtDrillReturnRapidPln.KeyPress, txtDrillReturnInitialPln.KeyPress, txtDrillRapid.KeyPress, txtCWarc.KeyPress, txtCCarc.KeyPress, txtAbs.KeyPress, txtCompLeft.KeyPress, txtCompRight.KeyPress, txtCompCancel.KeyPress, txtReturnHome.KeyPress, txtToolChange.KeyPress, txtUnitsMetric.KeyPress, txtUnitsEnglish.KeyPress
+    Private Sub ValidateKeys(ByVal sender As System.Object, ByVal e As System.Windows.Forms.KeyPressEventArgs) Handles txtSubRepeats.KeyPress, txtReturn.KeyPress, txtProgramId.KeyPress, txtEndmain.KeyPress, txtBlockSkip.KeyPress, txtYZplane.KeyPress, txtXZplane.KeyPress, txtXYplane.KeyPress, txtRapid.KeyPress, txtLinear.KeyPress, txtInc.KeyPress, txtDrills_9.KeyPress, txtDrills_8.KeyPress, txtDrills_7.KeyPress, txtDrills_6.KeyPress, txtDrills_5.KeyPress, txtDrills_4.KeyPress, txtDrills_3.KeyPress, txtDrills_2.KeyPress, txtDrills_10.KeyPress, txtDrills_1.KeyPress, txtDrills_0.KeyPress, txtDrillReturnRapidPln.KeyPress, txtDrillReturnInitialPln.KeyPress, txtDrillRapid.KeyPress, txtCWarc.KeyPress, txtCCarc.KeyPress, txtAbs.KeyPress, txtCompLeft.KeyPress, txtCompRight.KeyPress, txtCompCancel.KeyPress, txtReturnHome.KeyPress, txtToolChange.KeyPress, txtUnitsMetric.KeyPress, txtUnitsEnglish.KeyPress, txtIncIJK.KeyPress, txtAbsIJK.KeyPress
         Dim ret As Boolean = " ".Contains(e.KeyChar)
         e.Handled = ret
         If Not ret Then
@@ -620,7 +732,7 @@ Friend Class frmViewerSetup
     End Sub
 
 
-    Private Sub ValidateNumberValue(ByVal sender As System.Object, ByVal e As System.Windows.Forms.KeyPressEventArgs) Handles txtViewShift_2.KeyPress, txtViewShift_1.KeyPress, txtViewShift_0.KeyPress, txtHomeZValue.KeyPress, txtHomeYValue.KeyPress, txtHomeXValue.KeyPress, txtMaxX.KeyPress, txtMinX.KeyPress, txtMaxY.KeyPress, txtMinY.KeyPress, txtMaxZ.KeyPress, txtMinZ.KeyPress, txtPrintScale.KeyPress
+    Private Sub ValidateNumberValue(ByVal sender As System.Object, ByVal e As System.Windows.Forms.KeyPressEventArgs) Handles txtHomeZValue.KeyPress, txtHomeYValue.KeyPress, txtHomeXValue.KeyPress, txtMaxX.KeyPress, txtMinX.KeyPress, txtMaxY.KeyPress, txtMinY.KeyPress, txtMaxZ.KeyPress, txtMinZ.KeyPress, txtPrintScale.KeyPress, txtMB2ZoomFactor.KeyPress
 
         Dim KeyAscii As Integer = AscW(e.KeyChar)
         If KeyAscii > 47 AndAlso KeyAscii < 58 OrElse KeyAscii = 8 OrElse KeyAscii = 45 OrElse KeyAscii = 46 OrElse KeyAscii = 127 Then 'number or backspace
@@ -649,38 +761,23 @@ Friend Class frmViewerSetup
         With Me.MG_Viewer1
             Select Case CInt(DirectCast(sender, Button).Tag)
                 Case 0 'Defaults
-                    .Pitch = mMachine.ViewAngles(0)
-                    .Roll = mMachine.ViewAngles(1)
-                    .Yaw = mMachine.ViewAngles(2)
+                    .SetView(mMachine.ViewAngles(0), mMachine.ViewAngles(1), mMachine.ViewAngles(2))
                 Case 1
-                    .Pitch = 0.0F
-                    .Roll = 0.0F
-                    .Yaw = 0.0F
+                    .SetView(0, 0, 0)
                 Case 2 'front
-                    .Pitch = 270.0F
-                    .Roll = 0.0F
-                    .Yaw = 360.0F
-
+                    .SetView(270.0F, 0.0F, 360.0F)
                 Case 3 'side
-                    .Pitch = 270.0F
-                    .Roll = 0.0F
-                    .Yaw = 270.0F
+                    .SetView(270.0F, 0.0F, 270.0F)
                 Case 4 'iso
-                    .Pitch = 315.0F
-                    .Roll = 0.0F
-                    .Yaw = 315.0F
-
+                    .SetView(315.0F, 0.0F, 315.0F)
                 Case 5 'lathe
-                    .Pitch = 0.0F
-                    .Roll = 90.0F
-                    .Yaw = 90.0F
+                    .SetView(0.0F, 90.0F, 90.0F)
             End Select
-            .Redraw(False)
         End With
         DirtySetup = True
     End Sub
 
-    Private Sub MakeDirty(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles txtSearch.TextChanged, txtDescription.TextChanged, txtSubRepeats.TextChanged, txtSubcall.TextChanged, txtReturn.TextChanged, txtProgramId.TextChanged, txtEndmain.TextChanged, txtBlockSkip.TextChanged, txtYZplane.TextChanged, txtXZplane.TextChanged, txtXYplane.TextChanged, txtViewShift_2.TextChanged, txtViewShift_1.TextChanged, txtViewShift_0.TextChanged, txtRotAxis.TextChanged, txtRapid.TextChanged, txtLinear.TextChanged, txtInc.TextChanged, txtDrills_9.TextChanged, txtDrills_8.TextChanged, txtDrills_7.TextChanged, txtDrills_6.TextChanged, txtDrills_5.TextChanged, txtDrills_4.TextChanged, txtDrills_3.TextChanged, txtDrills_2.TextChanged, txtDrills_10.TextChanged, txtDrills_1.TextChanged, txtDrills_0.TextChanged, txtDrillReturnRapidPln.TextChanged, txtDrillReturnInitialPln.TextChanged, txtDrillRapid.TextChanged, txtCWarc.TextChanged, txtCCarc.TextChanged, txtAbs.TextChanged, txtCompRight.TextChanged, txtCompLeft.TextChanged, txtCompCancel.TextChanged, txtGlobalReplacements.TextChanged, txtHomeZValue.TextChanged, txtHomeYValue.TextChanged, txtHomeXValue.TextChanged, txtReturnHome.TextChanged, txtHomeZAddress.TextChanged, txtHomeYAddress.TextChanged, txtHomeXAddress.TextChanged, txtToolChange.TextChanged, txtRapidRate.TextChanged, txtFeedModeRev.TextChanged, txtFeedModeMin.TextChanged, txtMaxRPMDefault.TextChanged, txtMaxRpmCode.TextChanged, txtSpeedModeSFM.TextChanged, txtSpeedModeRPM.TextChanged, txtUnitsMetric.TextChanged, txtUnitsEnglish.TextChanged, txtMaxY.TextChanged, txtMinY.TextChanged, txtMinX.TextChanged, txtMaxZ.TextChanged, txtMinz.TextChanged, txtMaxX.TextChanged
+    Private Sub MakeDirty(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles txtSearch.TextChanged, txtDescription.TextChanged, txtSubRepeats.TextChanged, txtReturn.TextChanged, txtProgramId.TextChanged, txtEndmain.TextChanged, txtBlockSkip.TextChanged, txtYZplane.TextChanged, txtXZplane.TextChanged, txtXYplane.TextChanged, txtRotAxis.TextChanged, txtRapid.TextChanged, txtLinear.TextChanged, txtInc.TextChanged, txtDrills_9.TextChanged, txtDrills_8.TextChanged, txtDrills_7.TextChanged, txtDrills_6.TextChanged, txtDrills_5.TextChanged, txtDrills_4.TextChanged, txtDrills_3.TextChanged, txtDrills_2.TextChanged, txtDrills_10.TextChanged, txtDrills_1.TextChanged, txtDrills_0.TextChanged, txtDrillReturnRapidPln.TextChanged, txtDrillReturnInitialPln.TextChanged, txtDrillRapid.TextChanged, txtCWarc.TextChanged, txtCCarc.TextChanged, txtAbs.TextChanged, txtCompRight.TextChanged, txtCompLeft.TextChanged, txtCompCancel.TextChanged, txtGlobalReplacements.TextChanged, txtHomeZValue.TextChanged, txtHomeYValue.TextChanged, txtHomeXValue.TextChanged, txtReturnHome.TextChanged, txtHomeZAddress.TextChanged, txtHomeYAddress.TextChanged, txtHomeXAddress.TextChanged, txtToolChange.TextChanged, txtRapidRate.TextChanged, txtFeedModeRev.TextChanged, txtFeedModeMin.TextChanged, txtMaxRPMDefault.TextChanged, txtMaxRpmCode.TextChanged, txtSpeedModeSFM.TextChanged, txtSpeedModeRPM.TextChanged, txtUnitsMetric.TextChanged, txtUnitsEnglish.TextChanged, txtMaxY.TextChanged, txtMinY.TextChanged, txtMinX.TextChanged, txtMaxZ.TextChanged, txtMinZ.TextChanged, txtMaxX.TextChanged, txtIncIJK.TextChanged, txtAbsIJK.TextChanged, txtWorkOffsetsCancel.TextChanged, txtWorkOffsets.TextChanged, txtG92.TextChanged, txtZctrScale.TextChanged, txtYctrScale.TextChanged, txtYctrRot.TextChanged, txtXctrScale.TextChanged, txtXctrRot.TextChanged, txtScaleValue.TextChanged, txtG69.TextChanged, txtG68.TextChanged, txtG51.TextChanged, txtG50.TextChanged, txtAngleRot.TextChanged, txtMirrorZ.TextChanged, txtMirrorY.TextChanged, txtMirrorX.TextChanged, txtEnableMirror.TextChanged, txtCancelMirror.TextChanged
         DirtySetup = True
     End Sub
 
@@ -693,7 +790,7 @@ Friend Class frmViewerSetup
             ElseIf optZ.Checked Then
                 .Yaw = VScroll1.Value
             End If
-            .Redraw(False)
+            .SetView(.Pitch, .Roll, .Yaw)
         End With
         DirtySetup = True
     End Sub
@@ -736,27 +833,61 @@ Friend Class frmViewerSetup
         End If
     End Sub
 
-    Private Sub pbToolColors_Paint(ByVal sender As System.Object, ByVal e As System.Windows.Forms.PaintEventArgs) Handles pbToolColors.Paint
-        Dim rect As New Rectangle(0, 0, 16, 32)
+
+    Private mSelToolClrRect As New Rectangle(0, 0, 16, 32)
+    Private Sub pbToolColors_MouseDown(ByVal sender As System.Object, ByVal e As System.Windows.Forms.MouseEventArgs) Handles pbToolColors.MouseDown
+        Dim w As Integer = pbToolColors.Width \ 16
+        Dim h As Integer = pbToolColors.Height \ 2
+
         Try
-            Using br As New SolidBrush(Color.Black)
-                For r As Integer = 0 To 15
-                    br.Color = System.Drawing.Color.FromArgb(CInt(My.Settings.ToolColors(r)))
-                    rect.X = r * 16
-                    e.Graphics.FillRectangle(br, rect)
-                    e.Graphics.DrawRectangle(Pens.Black, rect)
-                    e.Graphics.DrawString(r.ToString, Me.Font, Brushes.Black, rect.X + 1, rect.Y + 1)
-                Next
-                rect.Y = 32
-                For r As Integer = 0 To 15
-                    br.Color = System.Drawing.Color.FromArgb(CInt(My.Settings.ToolColors(r + 16)))
-                    rect.X = r * 16
-                    e.Graphics.FillRectangle(br, rect)
-                    e.Graphics.DrawRectangle(Pens.Black, rect)
-                    e.Graphics.DrawString((r + 16).ToString, Me.Font, Brushes.Black, rect.X + 1, rect.Y + 1)
-                Next
+            Dim row As Integer = e.Y \ h
+            Dim col As Integer = e.X \ w
+            mToolIndex = (row * w) + col
+            mSelToolClrRect.X = col * w
+            mSelToolClrRect.Y = row * h
+            mSelToolClrRect.Width = w
+            mSelToolClrRect.Height = h
+            mSelToolClrRect.Inflate(-1, -1)
+            pbToolColors.Invalidate()
+        Catch ex As Exception
+            mLog.LogError(ex)
+        End Try
+    End Sub
+
+    Private Sub pbToolColors_Paint(sender As System.Object, e As System.Windows.Forms.PaintEventArgs) Handles pbToolColors.Paint
+        Dim w As Integer = pbToolColors.Width \ 16
+        Dim h As Integer = pbToolColors.Height \ 2
+        mSelToolClrRect.Height = h
+        mSelToolClrRect.Width = w
+        Dim rect As New Rectangle(0, 0, w, h)
+        Try
+            Using fnt As New Font(Me.Font.FontFamily, 10)
+                Dim txh As SizeF = e.Graphics.MeasureString("1", fnt)
+                Dim xoffset As Single = (w - txh.Width) / 2
+                Dim yoffset As Single = (h - txh.Height) / 2
+                Using br As New SolidBrush(Color.Black)
+                    For r As Integer = 0 To 15
+                        txh = e.Graphics.MeasureString(r.ToString, fnt)
+                        xoffset = (w - txh.Width) / 2
+                        br.Color = Color.FromArgb(CInt(My.Settings.ToolColors(r)))
+                        rect.X = r * w
+                        e.Graphics.FillRectangle(br, rect)
+                        e.Graphics.DrawRectangle(Pens.Black, rect)
+                        e.Graphics.DrawString(r.ToString, fnt, Brushes.Black, rect.X + xoffset, rect.Y + yoffset)
+                    Next
+                    rect.Y = h
+                    For r As Integer = 0 To 15
+                        txh = e.Graphics.MeasureString((r + 16).ToString, fnt)
+                        xoffset = (w - txh.Width) / 2
+                        br.Color = Color.FromArgb(CInt(My.Settings.ToolColors(r + 16)))
+                        rect.X = r * w
+                        e.Graphics.FillRectangle(br, rect)
+                        e.Graphics.DrawRectangle(Pens.Black, rect)
+                        e.Graphics.DrawString((r + 16).ToString, fnt, Brushes.Black, rect.X + xoffset, rect.Y + yoffset)
+                    Next
+                End Using
+                e.Graphics.DrawRectangle(Pens.Black, mSelToolClrRect)
             End Using
-            e.Graphics.DrawRectangle(Pens.Black, mSelToolClrRect)
         Catch
         End Try
 
@@ -781,27 +912,10 @@ Friend Class frmViewerSetup
                 lblColorSample.BackColor = c
             End Using
         Catch ex As Exception
-            mLog.LogError(ex)
         End Try
     End Sub
 
-    Private Sub pbToolColors_MouseDown(ByVal sender As System.Object, ByVal e As System.Windows.Forms.MouseEventArgs) Handles pbToolColors.MouseDown
-        Dim col As Integer = 0
-        Dim row As Integer = 0
-        Try
-            row = e.Y \ 32
-            col = e.X \ 16
-            mToolIndex = (row * 16) + col
-            mSelToolClrRect.X = col * 16
-            mSelToolClrRect.Y = row * 32
-            mSelToolClrRect.Width = 16
-            mSelToolClrRect.Height = 32
-            mSelToolClrRect.Inflate(-1, -1)
-            pbToolColors.Invalidate()
-        Catch ex As Exception
-            mLog.LogError(ex)
-        End Try
-    End Sub
+
 
     Private Sub cboColor_SelectedIndexChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles cboColor.SelectedIndexChanged
         Try
@@ -838,12 +952,7 @@ Friend Class frmViewerSetup
         MG_Viewer1.DrawExtraOverlayInfo = My.Settings.ViewerShowExtraOverlayDetails
     End Sub
 
-    Private Sub chkReverseMouseWheel_CheckedChanged(ByVal sender As Object, ByVal e As System.EventArgs) Handles chkReverseMouseWheel.CheckedChanged
-        My.Settings.ReverseMouseWheel = chkReverseMouseWheel.Checked
-        MG_Viewer1.ReverseMouseWheel = My.Settings.ReverseMouseWheel
-    End Sub
-
-    Private Sub chkDogLeg_CheckedChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles chkDogLeg.CheckedChanged
+    Private Sub Dirty_CheckedChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles chkDogLeg.CheckedChanged, chkAllowG10.CheckedChanged
         DirtySetup = True
     End Sub
 
@@ -869,7 +978,7 @@ Friend Class frmViewerSetup
                 .AllowFullOpen = True
                 .CustomColors = New Integer() {System.Drawing.ColorTranslator.ToWin32(My.Settings.ViewerLimitsColor)}
 
-                If .ShowDialog() = Windows.Forms.DialogResult.OK Then
+                If .ShowDialog() = DialogResult.OK Then
                     MG_Viewer1.LimitsColor = .Color
                     My.Settings.ViewerLimitsColor = .Color
                 End If
@@ -879,5 +988,82 @@ Friend Class frmViewerSetup
         End Try
     End Sub
 
+    Private Sub chkCornerRounding_CheckedChanged(sender As Object, e As EventArgs) Handles chkCornerRounding.CheckedChanged
+        DirtySetup = True
+    End Sub
+
+    Private Sub pgParseSettings_PropertyValueChanged(s As Object, e As PropertyValueChangedEventArgs)
+        DirtySetup = True
+    End Sub
+
+    Private mParentAvalonCtrl As MG_RichTextBox
+    Public Property ParentAvalonCtrl() As MG_RichTextBox
+        Get
+            Return mParentAvalonCtrl
+        End Get
+        Set(ByVal value As MG_RichTextBox)
+            mParentAvalonCtrl = value
+        End Set
+    End Property
+
+    Private Sub btnTestReplace_Click(sender As Object, e As EventArgs) Handles btnTestReplace.Click
+        If ParentAvalonCtrl IsNot Nothing Then
+            Dim parts() As String = {"", ""}
+            Dim replacements() As String = txtGlobalReplacements.Text.Split(vbCrLf.ToCharArray, StringSplitOptions.RemoveEmptyEntries)
+            rtbRegexTest.Text = ParentAvalonCtrl.Text
+            For Each replacement As String In replacements
+                If replacement.Contains(vbTab) Then
+                    parts(1) = String.Empty 'reset in case
+                    replacement.Split(vbTab.ToCharArray, StringSplitOptions.RemoveEmptyEntries).CopyTo(parts, 0)
+                    rtbRegexTest.Text = Regex.Replace(rtbRegexTest.Text, parts(0), parts(1), RegexOptions.Multiline)
+                End If
+            Next
+        End If
+
+    End Sub
+
+    Private Sub chkInvertY_CheckStateChanged(sender As Object, e As EventArgs) Handles chkInvertZ.CheckStateChanged, chkInvertY.CheckStateChanged, chkInvertX.CheckStateChanged, chkInvertABC.CheckStateChanged
+        DirtySetup = True
+    End Sub
+
+    Private Sub txtNumOnly_KeyPress(ByVal sender As System.Object, ByVal e As System.Windows.Forms.KeyPressEventArgs) Handles txtViewShift_2.KeyPress, txtViewShift_1.KeyPress, txtViewShift_0.KeyPress
+        If "-1234567890.".Contains(e.KeyChar) Then
+            e.Handled = False
+        ElseIf e.KeyChar = Chr(Keys.Back) Then
+            If CType(sender, TextBox).Text.Length = 1 Then
+                e.Handled = True
+            Else
+                e.Handled = False
+            End If
+        ElseIf e.KeyChar = Chr(Keys.Delete) Then
+            If CType(sender, TextBox).Text.Length = 1 Then
+                e.Handled = True
+            Else
+                e.Handled = False
+            End If
+        Else
+            e.Handled = True
+        End If
+    End Sub
+
+    Private Sub txtAngleRot_KeyPress(sender As Object, e As KeyPressEventArgs) Handles txtAngleRot.KeyPress, txtZctrScale.KeyPress, txtYctrScale.KeyPress, txtYctrRot.KeyPress, txtXctrScale.KeyPress, txtXctrRot.KeyPress, txtScaleValue.KeyPress, txtMirrorZ.KeyPress, txtMirrorY.KeyPress, txtMirrorX.KeyPress
+        If "-ABCDEFGHIJKLMNOPQRSTUVWXYZ".Contains(e.KeyChar) Then
+            e.Handled = False
+        ElseIf e.KeyChar = Chr(Keys.Back) Then
+            If CType(sender, TextBox).Text.Length = 1 Then
+                e.Handled = True
+            Else
+                e.Handled = False
+            End If
+        ElseIf e.KeyChar = Chr(Keys.Delete) Then
+            If CType(sender, TextBox).Text.Length = 1 Then
+                e.Handled = True
+            Else
+                e.Handled = False
+            End If
+        Else
+            e.Handled = True
+        End If
+    End Sub
 
 End Class
