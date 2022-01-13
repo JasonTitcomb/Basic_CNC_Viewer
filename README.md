@@ -13,5 +13,8 @@ It does not use accelerated graphics like OpenGl. It uses Windows GDI+ drawing.
 * Sub program calling M98 P
 * Syntax highlighhting
 * Two axis lathe
-* Some other things
+* Improved view rotation
+* Added measure
+* Added support for scaling and rotation
+* Fixed rotart not working
 
