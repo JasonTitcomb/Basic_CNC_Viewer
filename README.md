@@ -14,6 +14,7 @@ It does not use accelerated graphics like OpenGl. It uses Windows GDI+ drawing.
 * Syntax highlighhting
 * Two axis lathe
 * Improved view rotation
+* Added set rotate point and undo/redo(CTRL+Z/CTRL+Y) in viewer.
 * Added measure
 * Added support for scaling and rotation
 * Fixed rotary motion not working
