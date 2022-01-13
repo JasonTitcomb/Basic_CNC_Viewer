@@ -16,5 +16,5 @@ It does not use accelerated graphics like OpenGl. It uses Windows GDI+ drawing.
 * Improved view rotation
 * Added measure
 * Added support for scaling and rotation
-* Fixed rotart not working
+* Fixed rotary motion not working
 
