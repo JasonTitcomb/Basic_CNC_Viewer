@@ -309,8 +309,8 @@ Public Class MG_BasicViewer
     End Sub
 
     Private Sub Line3dDxf(Xs As Single, Ys As Single, Zs As Single, Xe As Single, Ye As Single, Ze As Single)
-        Dim sp = Vector3.Transform(New Vector3(Xs, Ys, Zs), mViewMatrix)
-        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Dim sp = Matrix44.Transform(mViewMatrix, New Vector3(Xs, Ys, Zs))
+        Dim ep = Matrix44.Transform(mViewMatrix, New Vector3(Xe, Ye, Ze))
         'We need to add 3d points to the displaylist so we can use inverse matrix to get the actual position
         'Line2D(sp.X, sp.Y, ep.X, ep.Y)
         Output_DXF_Section("@LINE", xOld, yOld, zOld, ep.X, ep.Y, ep.Z)
@@ -326,8 +326,8 @@ Public Class MG_BasicViewer
         Xe *= mMasterGfxAdjustScale
         Ye *= mMasterGfxAdjustScale
         Ze *= mMasterGfxAdjustScale
-        mDisplayLists3D.AddVector(Vector3.Transform(New Vector3(Xs, Ys, Zs), mRotaryMatrix))
-        mDisplayLists3D.AddVector(Vector3.Transform(New Vector3(Xe, Ye, Ze), mRotaryMatrix))
+        mDisplayLists3D.AddVector(Matrix44.Transform(mRotaryMatrix, New Vector3(Xs, Ys, Zs)))
+        mDisplayLists3D.AddVector(Matrix44.Transform(mRotaryMatrix, New Vector3(Xe, Ye, Ze)))
     End Sub
 
     Private Sub Line3dDraw(Xs As Single, Ys As Single, Zs As Single, Xe As Single, Ye As Single, Ze As Single)
@@ -338,8 +338,8 @@ Public Class MG_BasicViewer
         Ye *= mMasterGfxAdjustScale
         Ze *= mMasterGfxAdjustScale
 
-        Dim sp = Vector3.Transform(New Vector3(Xs, Ys, Zs), mViewMatrix)
-        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Dim sp = Matrix44.Transform(mViewMatrix, New Vector3(Xs, Ys, Zs))
+        Dim ep = Matrix44.Transform(mViewMatrix, New Vector3(Xe, Ye, Ze))
         'We need to add 3d points to the displaylist so we can use inverse matrix to get the actual position
         Line2D(sp.X, sp.Y, ep.X, ep.Y)
         xOld = ep.X
@@ -351,14 +351,14 @@ Public Class MG_BasicViewer
         Xe *= mMasterGfxAdjustScale
         Ye *= mMasterGfxAdjustScale
         Ze *= mMasterGfxAdjustScale
-        mDisplayLists3D.AddVector(Vector3.Transform(New Vector3(Xe, Ye, Ze), mRotaryMatrix))
+        mDisplayLists3D.AddVector(Matrix44.Transform(mRotaryMatrix, New Vector3(Xe, Ye, Ze)))
     End Sub
 
     Private Sub LineEnd3dDraw(Xe As Single, Ye As Single, Ze As Single)
         Xe *= mMasterGfxAdjustScale
         Ye *= mMasterGfxAdjustScale
         Ze *= mMasterGfxAdjustScale
-        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Dim ep = Matrix44.Transform(mViewMatrix, New Vector3(Xe, Ye, Ze))
         AddLineEndpoint(ep.X, ep.Y)
         xOld = ep.X
         yOld = ep.Y
@@ -368,11 +368,11 @@ Public Class MG_BasicViewer
         Xe *= mMasterGfxAdjustScale
         Ye *= mMasterGfxAdjustScale
         Ze *= mMasterGfxAdjustScale
-        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Dim ep = Matrix44.Transform(mViewMatrix, New Vector3(Xe, Ye, Ze))
         mPoints2D.Add(New PointF(ep.X, ep.Y))
     End Sub
     Private Sub LineEnd3dDxf(Xe As Single, Ye As Single, Ze As Single)
-        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Dim ep = Matrix44.Transform(mViewMatrix, New Vector3(Xe, Ye, Ze))
         Output_DXF_Section("@LINE", xOld, yOld, zOld, ep.X, ep.Y, ep.Z)
         xOld = ep.X
         yOld = ep.Y
@@ -2058,9 +2058,9 @@ Public Class MG_BasicViewer
         Dim kp(2) As Vector3
 
         With mDisplayLists3D
-            kp(0) = Vector3.Transform(.Item.Keypoints(0), mViewMatrix)
-            kp(1) = Vector3.Transform(.Item.Keypoints(1), mViewMatrix)
-            kp(2) = Vector3.Transform(.Item.Keypoints(2), mViewMatrix)
+            kp(0) = Matrix44.Transform(mViewMatrix, .Item.Keypoints(0))
+            kp(1) = Matrix44.Transform(mViewMatrix, .Item.Keypoints(1))
+            kp(2) = Matrix44.Transform(mViewMatrix, .Item.Keypoints(2))
             If .HasKeypoints Then
                 Using kpPen As New Pen(mInverseColor)
                     kpPen.Width = 0
@@ -3687,8 +3687,8 @@ feedMode As FeedMode) As Double
                 dxfKey = "@CCW_ARC"
             End If
         End If
-        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
-        Dim ctr = Vector3.Transform(New Vector3(Xctr, Yctr, Zctr), mViewMatrix)
+        Dim ep = Matrix44.Transform(mViewMatrix, New Vector3(Xe, Ye, Ze))
+        Dim ctr = Matrix44.Transform(mViewMatrix, New Vector3(Xctr, Yctr, Zctr))
 
         'Re-calculate angle increment
         sngAngle = (ArcDir * (sngTotalAngle / sngSegments))
@@ -3777,7 +3777,7 @@ feedMode As FeedMode) As Double
         Xe *= mMasterGfxAdjustScale
         Ye *= mMasterGfxAdjustScale
         Ze *= mMasterGfxAdjustScale
-        Dim ep = Vector3.Transform(New Vector3(Xe, Ye, Ze), mViewMatrix)
+        Dim ep = Matrix44.Transform(mViewMatrix, New Vector3(Xe, Ye, Ze))
         mPoints2D.Add(New PointF(ep.X, ep.Y))
         mLastPos.X = ep.X
         mLastPos.Y = ep.Y
@@ -3787,7 +3787,7 @@ feedMode As FeedMode) As Double
     End Sub
 
     Private Function Get2dFrom3D(input As Vector3) As PointF
-        Dim ep = Vector3.Transform(input, mViewMatrix)
+        Dim ep = Matrix44.Transform(mViewMatrix, input)
         Return New PointF(ep.X, ep.Y)
     End Function
 

@@ -50,8 +50,8 @@ Public Class clsDisplayLists3D
             For r As Integer = 0 To Item.VectorList3D.Count - 2
                 Dim mv1 = Item.VectorList3D(r)
                 Dim mv2 = Item.VectorList3D(r + 1)
-                Dim dv1 = Vector3.Transform(mv1, viewMatrix)
-                Dim dv2 = Vector3.Transform(mv2, viewMatrix)
+                Dim dv1 = Matrix44.Transform(viewMatrix, mv1)
+                Dim dv2 = Matrix44.Transform(viewMatrix, mv2)
 
                 Dim mag = locateRect.IntersectsLine(dv1.X, dv1.Y, dv2.X, dv2.Y)
                 'if mag is 0 then the start of the segment is inside the selection rectangle
@@ -84,9 +84,9 @@ Public Class clsDisplayLists3D
 
     Public Sub SetKeypointSetToView(viewMatrix As Matrix44)
         'Transform the model points to view points and test for a hit
-        KeyPointSet2D(0) = Vector3.Transform(Item.Keypoints(0), viewMatrix)
-        KeyPointSet2D(1) = Vector3.Transform(Item.Keypoints(1), viewMatrix)
-        KeyPointSet2D(2) = Vector3.Transform(Item.Keypoints(2), viewMatrix)
+        KeyPointSet2D(0) = Matrix44.Transform(viewMatrix, Item.Keypoints(0))
+        KeyPointSet2D(1) = Matrix44.Transform(viewMatrix, Item.Keypoints(1))
+        KeyPointSet2D(2) = Matrix44.Transform(viewMatrix, Item.Keypoints(2))
         HasKeypoints = True
     End Sub
     Public Function IsOverKeypoint(selrect As RectangleF) As Boolean
@@ -131,18 +131,18 @@ Public Class clsDisplayLists3D
         With Item
             Select Case mr.MotionType
                 Case Motion.CCARC, Motion.CWARC
-                    .Keypoints(0) = Vector3.Transform(New Vector3(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z), prevRotMat)
-                    .Keypoints(2) = Vector3.Transform(New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z), curRotMat)
-                    .Keypoints(1) = Vector3.Transform(New Vector3(mr.XYZcenter.X, mr.XYZcenter.Y, mr.XYZcenter.Z), curRotMat)
+                    .Keypoints(0) = Matrix44.Transform(prevRotMat, New Vector3(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z))
+                    .Keypoints(2) = Matrix44.Transform(curRotMat, New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z))
+                    .Keypoints(1) = Matrix44.Transform(curRotMat, New Vector3(mr.XYZcenter.X, mr.XYZcenter.Y, mr.XYZcenter.Z))
                 Case Motion.LINE, Motion.RAPID
                     'This is a possible condition where the rot matrix is in transition
-                    .Keypoints(0) = Vector3.Transform(New Vector3(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z), prevRotMat)
-                    .Keypoints(2) = Vector3.Transform(New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z), curRotMat)
-                    .Keypoints(1) = Vector3.Transform(New Vector3((mr.XYZpos.X + mr.XYZold.X) / 2, (mr.XYZpos.Y + mr.XYZold.Y) / 2, (mr.XYZpos.Z + mr.XYZold.Z) / 2), curRotMat)
+                    .Keypoints(0) = Matrix44.Transform(prevRotMat, New Vector3(mr.XYZold.X, mr.XYZold.Y, mr.XYZold.Z))
+                    .Keypoints(2) = Matrix44.Transform(curRotMat, New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z))
+                    .Keypoints(1) = Matrix44.Transform(curRotMat, New Vector3((mr.XYZpos.X + mr.XYZold.X) / 2, (mr.XYZpos.Y + mr.XYZold.Y) / 2, (mr.XYZpos.Z + mr.XYZold.Z) / 2))
                 Case Else
-                    .Keypoints(0) = Vector3.Transform(New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZold.Z), prevRotMat)
-                    .Keypoints(2) = Vector3.Transform(New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z), curRotMat)
-                    .Keypoints(1) = Vector3.Transform(New Vector3(mr.XYZpos.X, mr.XYZpos.Y, (mr.XYZpos.Z + mr.XYZold.Z) / 2), curRotMat)
+                    .Keypoints(0) = Matrix44.Transform(prevRotMat, New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZold.Z))
+                    .Keypoints(2) = Matrix44.Transform(curRotMat, New Vector3(mr.XYZpos.X, mr.XYZpos.Y, mr.XYZpos.Z))
+                    .Keypoints(1) = Matrix44.Transform(curRotMat, New Vector3(mr.XYZpos.X, mr.XYZpos.Y, (mr.XYZpos.Z + mr.XYZold.Z) / 2))
             End Select
             .Keypoints(0) = Vector3.Multiply(.Keypoints(0), masterScale)
             .Keypoints(1) = Vector3.Multiply(.Keypoints(1), masterScale)

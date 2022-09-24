@@ -298,17 +298,17 @@ Public Class WorldOffset
     Public Shared Sub InvertValue(ByRef v As Vector3)
         Dim inv As Matrix44 = Matrix44.Identity
         inv *= Working
-        Dim pt = Vector3.Transform(v, Matrix44.Invert(inv))
+        Dim pt = Matrix44.Transform(Matrix44.Invert(inv), v)
         v.X = pt.X
         v.Y = pt.Y
         v.Z = pt.Z
     End Sub
     Public Shared Function Apply(x As Double, y As Double, z As Double) As Vector3
         Dim input As New Vector3(x, y, z)
-        Return Vector3.Transform(input, Working)
+        Return Matrix44.Transform(Working, input)
     End Function
     Public Shared Sub Apply(ByRef v As Vector3)
-        Dim pt = Vector3.Transform(v, Working)
+        Dim pt = Matrix44.Transform(Working, v)
         v.X = pt.X
         v.Y = pt.Y
         v.Z = pt.Z
@@ -319,7 +319,7 @@ Public Class WorldOffset
         RotSclMir *= Rotate
         RotSclMir *= Scale
         RotSclMir *= Mirror
-        Dim pt = Vector3.Transform(v, RotSclMir)
+        Dim pt = Matrix44.Transform(RotSclMir, v)
         v.X = pt.X
         v.Y = pt.Y
         v.Z = pt.Z
@@ -327,21 +327,21 @@ Public Class WorldOffset
 
 
     Public Shared Sub ApplyRotation(ByRef v As Vector3)
-        Dim pt = Vector3.Transform(v, Rotate)
+        Dim pt = Matrix44.Transform(Rotate, v)
         v.X = pt.X
         v.Y = pt.Y
         v.Z = pt.Z
     End Sub
 
     Public Shared Sub ApplyScale(ByRef v As Vector3)
-        Dim pt = Vector3.Transform(v, Scale)
+        Dim pt = Matrix44.Transform(Scale, v)
         v.X = pt.X
         v.Y = pt.Y
         v.Z = pt.Z
     End Sub
 
     Public Shared Sub ApplyMirror(ByRef v As Vector3)
-        Dim pt = Vector3.Transform(v, Mirror)
+        Dim pt = Matrix44.Transform(Mirror, v)
         v.X = pt.X
         v.Y = pt.Y
         v.Z = pt.Z
@@ -349,7 +349,7 @@ Public Class WorldOffset
 
     Public Shared Function ApplyZ(z As Double) As Double
         Dim v = New Vector3(0, 0, z)
-        Dim pt = Vector3.Transform(v, Working)
+        Dim pt = Matrix44.Transform(Working, v)
         Return pt.Z
     End Function
 End Class
