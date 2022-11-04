@@ -108,8 +108,8 @@ Partial Public Class clsMeasurement
                     outputValue = Math.Round(((Distance(idx) * unitAdjustment) / masterScale), 4) & unitString & suffix & alignment
                     'Transform the points to the view
                     Dim textsize = g.MeasureString(outputValue, fnt)
-                    Dim startMeasurePoint = Abacus.SinglePrecision.Vector3.Transform(fromKeyPoint, viewMat)
-                    Dim endMeasurePoint = Vector3.Transform(newToKp(idx), viewMat)
+                    Dim startMeasurePoint = Matrix44.Transform(viewMat, fromKeyPoint)
+                    Dim endMeasurePoint = Matrix44.Transform(viewMat, newToKp(idx))
                     'Draw the text half way between sp and ep
                     fpt = New PointF((startMeasurePoint.X + endMeasurePoint.X) / 2 - textsize.Width / 2, -(textsize.Height / 2) - (startMeasurePoint.Y + endMeasurePoint.Y) / 2)
                     textrect = New RectangleF(fpt, textsize)
@@ -118,8 +118,8 @@ Partial Public Class clsMeasurement
                     g.DrawLine(measurePen, startMeasurePoint.X, startMeasurePoint.Y, endMeasurePoint.X, endMeasurePoint.Y)
                 Case DimType.ANGLE
                     outputValue = Math.Round(Angle, 3) & "deg"
-                    Dim startMeasurePoint = Vector3.Transform(fromKeyPoint, viewMat)
-                    Dim endMeasurePoint = Vector3.Transform(toKeyPoint, viewMat)
+                    Dim startMeasurePoint = Matrix44.Transform(viewMat, fromKeyPoint)
+                    Dim endMeasurePoint = Matrix44.Transform(viewMat, toKeyPoint)
                     Dim textsize = g.MeasureString(outputValue, fnt)
 
                     'Draw the text half way between sp and ep
@@ -132,8 +132,8 @@ Partial Public Class clsMeasurement
 
             'Extension line
             If mExtendTo <> NullVec3 Then
-                Dim expTo = Vector3.Transform(mExtendTo, viewMat)
-                Dim expFrom = Vector3.Transform(mExtendFrom, viewMat)
+                Dim expTo = Matrix44.Transform(viewMat, mExtendTo)
+                Dim expFrom = Matrix44.Transform(viewMat, mExtendFrom)
                 measurePen.Width = -1
                 measurePen.DashStyle = DashStyle.Dot
                 measurePen.Color = Color.FromArgb(100, Not backcolor.R, Not backcolor.G, Not backcolor.B)
